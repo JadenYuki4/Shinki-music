@@ -49,6 +49,11 @@ These additions complement the full Phase (a) inventory in DEPENDENCIES.md. JAR 
 | Coroutines test | `1.11.0` | `implementation(libs.kotlinx.coroutines.test)` in commonTest | Deterministic virtual time; zero release bytes |
 | JUnit | `4.13.2` | `implementation(libs.junit)` in jvmTest | JVM test runner and opt-in assumption; zero release bytes |
 | NIO desugaring | `2.1.5` | `coreLibraryDesugaring(libs.desugar.jdk)` in androidApp | NewPipe's Java APIs on API 26; final byte cost depends on L8/R8 reachability |
+| SQLDelight Gradle plugin | `2.4.1` | `alias(libs.plugins.sqldelight)` in root (`apply false`) and `shared` | Compile-time SQL verification and typed Kotlin query generation for `search_history`, `play_event` and `favorite` |
+| SQLDelight runtime + coroutines | `2.4.1` | `implementation(libs.sqldelight.runtime)` and `implementation(libs.sqldelight.coroutines)` in `commonMain` | Lightweight query execution and `Flow` observation (~60 KiB combined before R8) |
+| SQLDelight Android driver | `2.4.1` | `implementation(libs.sqldelight.android)` in `androidMain` | Delegates to Android platform SQLite (`SupportSQLiteOpenHelper`); no bundled native SQLite engine in APK |
+| SQLDelight JVM SQLite driver | `2.4.1` | `implementation(libs.sqldelight.sqlite)` in `jvmMain` and `jvmTest` | Desktop JDBC SQLite driver (pulls `org.xerial:sqlite-jdbc`); adds `java.sql` jlink module |
+| Multiplatform Settings | `1.3.0` | `implementation(libs.multiplatform.settings)` and `implementation(libs.multiplatform.settings.noArg)` in `commonMain`; `implementation(libs.multiplatform.settings.test)` in `commonTest` | Key-value preferences (`SharedPreferences` on Android, `java.util.prefs.Preferences` on JVM); adds `java.prefs` jlink module |
 
 Catalog coordinates:
 

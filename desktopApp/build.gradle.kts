@@ -34,8 +34,17 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Deb)
             packageName = "OrbitMusic"
             packageVersion = "1.0.0"
-            // Explicit UI/source modules, verified with suggestModules; never bundle all JDK modules.
-            modules("java.desktop", "java.logging", "java.instrument", "java.net.http", "jdk.dynalink", "jdk.unsupported")
+            // Explicit UI/source/storage modules, verified with suggestModules; never bundle all JDK modules.
+            modules(
+                "java.desktop",
+                "java.logging",
+                "java.instrument",
+                "java.net.http",
+                "java.prefs",
+                "java.sql",
+                "jdk.dynalink",
+                "jdk.unsupported",
+            )
         }
     }
 }

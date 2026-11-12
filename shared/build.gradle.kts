@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.sqldelight)
 }
 
 kotlin {
@@ -43,10 +44,20 @@ kotlin {
             }
         }
         jvmMain.get().dependsOn(jvmAndAndroidMain)
+        jvmMain.dependencies {
+            implementation(libs.sqldelight.sqlite)
+        }
         androidMain.get().dependsOn(jvmAndAndroidMain)
+        androidMain.dependencies {
+            implementation(libs.sqldelight.android)
+        }
         commonMain.dependencies {
             implementation(libs.koin.core)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.sqldelight.runtime)
+            implementation(libs.sqldelight.coroutines)
+            implementation(libs.multiplatform.settings)
+            implementation(libs.multiplatform.settings.noArg)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
@@ -57,10 +68,22 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.multiplatform.settings.test)
         }
-        jvmTest.dependencies { implementation(libs.junit) }
+        jvmTest.dependencies {
+            implementation(libs.junit)
+            implementation(libs.sqldelight.sqlite)
+        }
         getByName("androidDeviceTest").dependencies {
             implementation(libs.androidx.testRunner)
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("OrbitDatabase") {
+            packageName.set("io.github.jadenyuki4.orbitmusic.db")
         }
     }
 }

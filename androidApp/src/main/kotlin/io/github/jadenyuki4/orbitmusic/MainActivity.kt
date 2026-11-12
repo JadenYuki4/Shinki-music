@@ -13,9 +13,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import io.github.jadenyuki4.orbitmusic.data.NewPipeMusicSource
+import io.github.jadenyuki4.orbitmusic.data.createAndroidHistoryStore
 
 class MainActivity : ComponentActivity() {
     private val musicSource by lazy { NewPipeMusicSource() }
+    private val historyStore by lazy { createAndroidHistoryStore(this) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val engine by lazy { AndroidEngine(this, scope) }
     private val playback by lazy { Playback(musicSource, engine, scope) }
@@ -37,7 +39,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            App(systemReduceMotion = systemReduceMotion, source = musicSource, playback = playback)
+            App(
+                systemReduceMotion = systemReduceMotion,
+                source = musicSource,
+                history = historyStore,
+                playback = playback,
+            )
         }
     }
 }

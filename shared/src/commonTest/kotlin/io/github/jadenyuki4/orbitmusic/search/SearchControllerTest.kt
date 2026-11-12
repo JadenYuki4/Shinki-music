@@ -120,4 +120,46 @@ class SearchControllerTest {
         assertNull(controller.state.value.nextPage)
         assertTrue(controller.state.value.reachedLimit)
     }
+
+    @Test fun submitRecordsSearchHistoryAndChooseHistoryReSubmits() = runTest {
+        val source = Source()
+        val history = io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore()
+        val controller = SearchController(source, backgroundScope, history)
+        runCurrent()
+        controller.changeQuery("  synthwave  ")
+        controller.submit()
+        runCurrent()
+        assertEquals(1, controller.state.value.history.size)
+        val entry = controller.state.value.history.single()
+        assertEquals("synthwave", entry.query)
+        assertEquals(MusicKind.Song, entry.kind)
+
+        controller.changeQuery("")
+        runCurrent()
+        assertFalse(controller.state.value.submitted)
+        assertEquals(1, controller.state.value.history.size)
+
+        controller.chooseHistory(entry)
+        runCurrent()
+        assertTrue(controller.state.value.submitted)
+        assertEquals("synthwave", controller.state.value.query)
+        assertEquals(1, controller.state.value.items.size)
+
+        controller.removeHistory(entry)
+        runCurrent()
+        assertTrue(controller.state.value.history.isEmpty())
+    }
+
+    @Test fun incognitoDoesNotRecordSubmittedSearches() = runTest {
+        val source = Source()
+        val history = io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore()
+        history.setIncognito(true)
+        val controller = SearchController(source, backgroundScope, history)
+        runCurrent()
+        assertTrue(controller.state.value.incognito)
+        controller.changeQuery("secret query")
+        controller.submit()
+        runCurrent()
+        assertTrue(controller.state.value.history.isEmpty())
+    }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.di
 
+import io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore
 import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.search.SearchViewModel
 import io.github.jadenyuki4.orbitmusic.theme.ThemeViewModel
@@ -8,11 +9,15 @@ import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 
 /** Isolated container: no global context or service lookup inside the data layer. */
-fun createAppGraph(source: MusicSource) = koinApplication {
+fun createAppGraph(
+    source: MusicSource,
+    history: HistoryStore = InMemoryHistoryStore(),
+) = koinApplication {
     modules(module {
         single<MusicSource> { source }
+        single<HistoryStore> { history }
         factory { ThemeViewModel() }
-        factory { SearchViewModel(get()) }
+        factory { SearchViewModel(get(), get()) }
     })
 }
 

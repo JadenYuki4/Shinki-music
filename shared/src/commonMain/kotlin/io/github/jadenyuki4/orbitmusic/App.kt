@@ -15,14 +15,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import io.github.jadenyuki4.orbitmusic.theme.*
+import io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore
+import io.github.jadenyuki4.orbitmusic.domain.HistoryStore
 import io.github.jadenyuki4.orbitmusic.domain.MusicSource
 import io.github.jadenyuki4.orbitmusic.di.*
 import io.github.jadenyuki4.orbitmusic.search.SearchViewModel
 
 /** Shared host: isolated DI container, lifecycle-owned state, and token-only UI. */
 @Composable
-fun App(systemReduceMotion: Boolean = false, source: MusicSource = PreviewMusicSource, playback: Playback? = null) {
-    val graph = remember(source) { createAppGraph(source) }
+fun App(
+    systemReduceMotion: Boolean = false,
+    source: MusicSource = PreviewMusicSource,
+    history: HistoryStore = InMemoryHistoryStore(),
+    playback: Playback? = null,
+) {
+    val graph = remember(source, history) { createAppGraph(source, history) }
     DisposableEffect(graph) { onDispose { graph.close() } }
     val model = viewModel { graph.koin.get<ThemeViewModel>() }
     val search = viewModel { graph.koin.get<SearchViewModel>() }
