@@ -37,7 +37,7 @@ desktopApp/
   build.gradle.kts                   # JVM 17 target, jlink modules, MSI/DEB targets
   src/main/.../main.kt               # desktop window and close lifecycle
 shared/
-  src/commonMain/kotlin/com/example/myapplication/
+  src/commonMain/kotlin/io/github/jadenyuki4/orbitmusic/
     App.kt                          # ViewModel host and appearance workbench
     MusicShell.kt                   # Limusic-inspired responsive navigation/dock/panes
     domain/MusicSource.kt            # source-neutral interface/models, no adapter yet

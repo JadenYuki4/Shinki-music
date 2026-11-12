@@ -13,7 +13,7 @@ kotlin {
         compilerOptions { jvmTarget = JvmTarget.JVM_17 }
     }
     android {
-       namespace = "com.example.myapplication.shared"
+       namespace = "io.github.jadenyuki4.orbitmusic.shared"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
        minSdk = libs.versions.android.minSdk.get().toInt()
        compilerOptions {

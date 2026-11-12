@@ -17,7 +17,7 @@ Theme edits are session-only. Full custom token editing, theme JSON, art-derived
 - [Limusic design reference and scope](docs/DESIGN_REFERENCE.md)
 - [License notice](NOTICE.md) and [full GPLv3 text](LICENSE)
 
-Complete source files are in the workspace; no pseudocode or manual copy step is required. Shared code lives in `shared/src/commonMain/kotlin/com/example/myapplication`, with Android/Desktop entry points in their respective modules. See the architecture document's file index.
+Complete source files are in the workspace; no pseudocode or manual copy step is required. Shared code lives in `shared/src/commonMain/kotlin/io/github/jadenyuki4/orbitmusic`, with Android/Desktop entry points in their respective modules. See the architecture document's file index.
 
 ## Prerequisites
 

@@ -26,11 +26,11 @@ dependencies {
 }
 
 android {
-    namespace = "com.example.myapplication"
+    namespace = "io.github.jadenyuki4.orbitmusic"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.example.myapplication"
+        applicationId = "io.github.jadenyuki4.orbitmusic"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

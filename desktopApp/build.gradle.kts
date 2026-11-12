@@ -26,7 +26,7 @@ tasks.test {
 
 compose.desktop {
     application {
-        mainClass = "com.example.myapplication.MainKt"
+        mainClass = "io.github.jadenyuki4.orbitmusic.MainKt"
         nativeDistributions.appResourcesRootDir.set(project.layout.projectDirectory.dir("resources"))
         // Linux uses the distribution-provided libmpv ABI 2.
 
