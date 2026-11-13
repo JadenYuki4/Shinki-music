@@ -29,6 +29,7 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     private var polling: Job? = null
     private var lastStream: AudioStream? = null
     private var ended = false
+    private var manualFilter: String? = null
     private var activeProfile: SoundProfile = SoundProfile.AnimeOST
 
     private fun open(): Pointer {
@@ -130,8 +131,15 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         }
     }
 
+    override fun equalizer(bands: List<Float>, enabled: Boolean) {
+        scope.launch {
+            manualFilter = buildMpvLavfiEqualizerFilter(bands, enabled)
+            if (handle != null) applySoundProfile(activeProfile)
+        }
+    }
+
     private fun applySoundProfile(profile: SoundProfile) {
-        val filter = when (profile) {
+        val filter = manualFilter ?: when (profile) {
             SoundProfile.Flat -> ""
             SoundProfile.AnimeOST -> "lavfi=[equalizer=f=250:t=q:w=1:g=2,equalizer=f=3200:t=q:w=1.2:g=3.5,equalizer=f=11000:t=q:w=1.5:g=2.5]"
             SoundProfile.HiFi -> "lavfi=[equalizer=f=90:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1.2:g=3.5]"

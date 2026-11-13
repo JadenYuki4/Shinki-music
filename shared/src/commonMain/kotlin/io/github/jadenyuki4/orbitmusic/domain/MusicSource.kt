@@ -4,20 +4,12 @@ package io.github.jadenyuki4.orbitmusic.domain
 /** Source-neutral models; IDs belong to the source and are not cached audio URLs. */
 enum class MusicKind { Song, Album, Artist, Playlist }
 
-/**
- * SpotiFLAC application metadata & ecosystem constants ported from `spotiflac-main`
- * (`lib/constants/app_info.dart`, `config/app.json`, `apps.json`).
- */
-object SpotiFlacAppInfo {
+object ShinkiAppInfo {
     const val APP_NAME = "Shinki music"
+    const val AUTHOR = "JadenYuki4"
+    const val EDITION = RELEASE_EDITION
     const val VERSION = RELEASE_VERSION
     const val BUILD_NUMBER = RELEASE_BUILD
-    const val BUNDLE_ID = "com.spotiflac.app"
-    const val COPYRIGHT = "© 2026 SpotiFLAC"
-    const val MOBILE_AUTHOR = "zarz"
-    const val ORIGINAL_AUTHOR = "afkarxyz"
-    const val GITHUB_URL = "https://github.com/zarzet/SpotiFLAC-Mobile"
-    const val WEBSITE_URL = "https://spotiflac.com"
     const val PREAMP_DEFAULT_DB = -6.0f
     val EQ_FREQUENCIES_HZ = listOf(31.25f, 62.5f, 125f, 250f, 500f, 1000f, 2000f, 4000f, 8000f, 16000f)
     val EQ_FREQUENCY_LABELS = listOf("31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k")

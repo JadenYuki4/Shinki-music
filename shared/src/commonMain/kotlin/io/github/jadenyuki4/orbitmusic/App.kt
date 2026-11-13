@@ -31,7 +31,7 @@ import io.github.jadenyuki4.orbitmusic.theme.*
 import io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore
 import io.github.jadenyuki4.orbitmusic.domain.HistoryStore
 import io.github.jadenyuki4.orbitmusic.domain.MusicSource
-import io.github.jadenyuki4.orbitmusic.domain.SpotiFlacAppInfo
+import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import io.github.jadenyuki4.orbitmusic.di.*
 import io.github.jadenyuki4.orbitmusic.search.SearchViewModel
 
@@ -60,11 +60,11 @@ fun App(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    SpotiFlacBrandBadge(size = 32.dp)
+                    ShinkiBrandBadge(size = 32.dp)
                     Column {
-                        Text("${SpotiFlacAppInfo.APP_NAME} · Estudio de Apariencia y Tema", style = MaterialTheme.typography.headlineMedium)
+                        Text("${ShinkiAppInfo.APP_NAME} · Estudio de Apariencia y Tema", style = MaterialTheme.typography.headlineMedium)
                         Text(
-                            "${SpotiFlacAppInfo.APP_NAME} v${SpotiFlacAppInfo.VERSION} (compilación ${SpotiFlacAppInfo.BUILD_NUMBER})",
+                            "${ShinkiAppInfo.APP_NAME} de ${ShinkiAppInfo.AUTHOR} · ${ShinkiAppInfo.EDITION} v${ShinkiAppInfo.VERSION} (compilación ${ShinkiAppInfo.BUILD_NUMBER})",
                             color = p.muted,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -72,6 +72,8 @@ fun App(
                 }
                 MaintenancePanel()
                 TastePanel(playback)
+                BackupAndM3uPanel(playback)
+                CacheAndShortcutsPanel(playback)
                 ThemeControls(settings, model::dispatch, Modifier.fillMaxWidth())
                 TokenStrip()
             }

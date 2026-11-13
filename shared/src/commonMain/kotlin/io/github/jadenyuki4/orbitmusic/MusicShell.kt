@@ -70,6 +70,7 @@ private val spotiFlacShowcaseAlbums = listOf(
  */
 @Composable
 fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Composable () -> Unit) {
+    BindPlaybackSessionPersistence(playback)
     val t = LocalLayout.current
     val p = LocalPalette.current
     val effects = LocalEffects.current
@@ -92,14 +93,16 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     BoxWithConstraints(
         Modifier.fillMaxSize().background(p.background).safeDrawingPadding()
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && theater) {
-                    theater = false
-                    true
-                } else if (event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.K) {
-                    theater = false
-                    destination = Destination.Search
-                    true
-                } else false
+                handleGlobalKeyboardShortcut(
+                    event = event,
+                    playback = playback,
+                    isTheater = theater,
+                    onCloseTheater = { theater = false },
+                    onOpenSearch = {
+                        theater = false
+                        destination = Destination.Search
+                    },
+                )
             }
     ) {
         val desktop = maxWidth >= t.wideBreakpoint
@@ -113,9 +116,9 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    SpotiFlacBrandBadge(size = 28.dp)
+                    ShinkiBrandBadge(size = 28.dp)
                     Text(
-                        SpotiFlacAppInfo.APP_NAME,
+                        ShinkiAppInfo.APP_NAME,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = p.text,
@@ -401,7 +404,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             ) {
-                                                SpotiFlacBrandBadge(size = 18.dp)
+                                                ShinkiBrandBadge(size = 18.dp)
                                                 Text("▾", color = p.muted, style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
@@ -583,7 +586,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 // 6. SpotiFLAC 10-Band Equalizer Studio (`showcase-dark.png` Screen 4)
                                 if (showEqualizerOnHome) {
                                     SpotiFlacEqualizerCard(
-                                        activeProfile = activeProfile,
+                                        player = playback,
                                         onSelectProfile = { prof ->
                                             if (playback != null) playback.setSoundProfile(prof)
                                             else fallbackProfile = prof
@@ -722,7 +725,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                         else Text("Elegí una canción en Buscar.", color = p.muted)
 
                         SpotiFlacEqualizerCard(
-                            activeProfile = activeProfile,
+                            player = playback,
                             onSelectProfile = { prof ->
                                 if (playback != null) playback.setSoundProfile(prof)
                                 else fallbackProfile = prof

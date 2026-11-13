@@ -7,7 +7,7 @@ ROOT = "org.mpris.MediaPlayer2"
 PLAYER = ROOT + ".Player"
 PATH = "/org/mpris/MediaPlayer2"
 properties = {
-    ROOT: {"Identity": ("s", "Orbit Music"), "CanQuit": ("b", False),
+    ROOT: {"Identity": ("s", "Shinki music"), "CanQuit": ("b", False),
            "CanRaise": ("b", False), "HasTrackList": ("b", False),
            "SupportedUriSchemes": ("as", []), "SupportedMimeTypes": ("as", [])},
     PLAYER: {"PlaybackStatus": ("s", "Stopped"), "CanControl": ("b", True),

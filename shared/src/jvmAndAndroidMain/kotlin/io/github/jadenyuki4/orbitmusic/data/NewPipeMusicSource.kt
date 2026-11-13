@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.data
 
+import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import io.github.jadenyuki4.orbitmusic.domain.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -74,12 +75,15 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
         fun encode(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
         val url = "https://lrclib.net/api/search?track_name=${encode(item.title)}&artist_name=${encode(artist)}"
         val request = org.schabi.newpipe.extractor.downloader.Request.newBuilder().get(url)
-            .headers(mapOf("User-Agent" to listOf("OrbitMusic/1.0 (io.github.jadenyuki4.orbitmusic)"))).build()
+            .headers(mapOf("User-Agent" to listOf("ShinkiMusic/${ShinkiAppInfo.VERSION} (io.github.jadenyuki4.orbitmusic)"))).build()
         val body = UrlConnectionDownloader().execute(request).responseBody()
         val records = com.grack.nanojson.JsonParser.array().from(body)
-        records.filterIsInstance<com.grack.nanojson.JsonObject>().firstOrNull {
+        val objects = records.filterIsInstance<com.grack.nanojson.JsonObject>()
+        val match = objects.firstOrNull {
             it.getString("trackName").equals(item.title, true) && it.getString("artistName").equals(artist, true)
-        }?.getString("plainLyrics")?.takeIf { it.isNotBlank() }?.take(20000)
+        } ?: objects.firstOrNull()
+        (match?.getString("syncedLyrics")?.takeIf { it.isNotBlank() }
+            ?: match?.getString("plainLyrics")?.takeIf { it.isNotBlank() })?.take(30000)
     }
 
     override suspend fun discover(page: String?, pageSize: Int): SourceResult<MusicPage> {

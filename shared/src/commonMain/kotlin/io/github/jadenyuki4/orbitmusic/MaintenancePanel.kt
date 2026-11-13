@@ -7,7 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
-import io.github.jadenyuki4.orbitmusic.domain.SpotiFlacAppInfo
+import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -47,7 +47,7 @@ internal fun MaintenancePanel() {
                     val tag = latestRelease()
                     status = when {
                         tag == null -> "Todavía no hay una versión pública disponible."
-                        newerRelease(tag, SpotiFlacAppInfo.VERSION) -> {
+                        newerRelease(tag, ShinkiAppInfo.VERSION) -> {
                             release = tag
                             "Actualización disponible · $tag"
                         }
@@ -62,7 +62,7 @@ internal fun MaintenancePanel() {
             runCatching { uri.openUri("$RELEASES/tag/$tag") }.onFailure { status = "Abrí $RELEASES desde tu navegador." }
         }) { Text("Ver descarga") } }
         TextButton(onClick = {
-            val info = "Shinki music ${SpotiFlacAppInfo.VERSION} (${SpotiFlacAppInfo.BUILD_NUMBER})\n" + platformDiagnostic()
+            val info = "${ShinkiAppInfo.APP_NAME} de ${ShinkiAppInfo.AUTHOR} · ${ShinkiAppInfo.EDITION} ${ShinkiAppInfo.VERSION} (${ShinkiAppInfo.BUILD_NUMBER})\n" + platformDiagnostic()
             runCatching { clipboard.setText(AnnotatedString(info)) }
                 .onSuccess { status = "Diagnóstico copiado." }.onFailure { status = "Portapapeles no disponible." }
         }) { Text("Copiar diagnóstico") }

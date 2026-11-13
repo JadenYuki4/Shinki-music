@@ -12,6 +12,8 @@ plugins {
 val generatedVersion = layout.buildDirectory.dir("generated/shinkiVersion")
 val generateVersion by tasks.registering {
     val versionName = providers.gradleProperty("shinkiVersion")
+    val edition = providers.gradleProperty("shinkiEdition")
+    inputs.property("edition", edition)
     val buildNumber = providers.gradleProperty("shinkiBuild")
     inputs.property("versionName", versionName)
     inputs.property("buildNumber", buildNumber)
@@ -23,6 +25,7 @@ val generateVersion by tasks.registering {
             writeText("""
                 package io.github.jadenyuki4.orbitmusic.domain
                 internal const val RELEASE_VERSION = "${versionName.get()}"
+                internal const val RELEASE_EDITION = "${edition.get()}"
                 internal const val RELEASE_BUILD = "${buildNumber.get()}"
             """.trimIndent())
         }

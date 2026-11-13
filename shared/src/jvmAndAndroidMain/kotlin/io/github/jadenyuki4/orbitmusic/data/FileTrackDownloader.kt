@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.data
 
+import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import io.github.jadenyuki4.orbitmusic.artBytes
 import io.github.jadenyuki4.orbitmusic.domain.*
 import kotlinx.coroutines.Dispatchers
@@ -94,7 +95,7 @@ class FileTrackDownloader(
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
             connection.instanceFollowRedirects = true
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; OrbitMusic/0.2)")
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; ShinkiMusic/${ShinkiAppInfo.VERSION})")
             val status = connection.responseCode
             if (status !in 200..299) {
                 throw IOException("Error HTTP $status al descargar el audio.")

@@ -18,7 +18,14 @@ interface AudioEngine {
     fun volume(value: Float)
     fun speed(value: Float)
     fun soundProfile(profile: SoundProfile) {}
+    fun equalizer(bands: List<Float>, enabled: Boolean) {}
 }
+
+data class EqualizerState(
+    val preset: SpotiFlacEqPreset = SpotiFlacEqPreset.Vocal,
+    val bands: List<Float> = preset.bandsDb,
+    val enabled: Boolean = true,
+)
 
 enum class RepeatMode { Off, All, One }
 
@@ -43,6 +50,11 @@ class Playback(
     val audioQuality = MutableStateFlow(AudioQuality.High)
     val audioFormat = MutableStateFlow(AudioFormatPreference.Auto)
     val soundProfile = MutableStateFlow(SoundProfile.AnimeOST)
+    val equalizerState = MutableStateFlow(EqualizerState())
+    fun setEqualizer(value: EqualizerState) {
+        equalizerState.value = value
+        engine.equalizer(value.bands, value.enabled)
+    }
     val currentStream = MutableStateFlow<AudioStream?>(null)
 
     fun setVolume(value: Float) {

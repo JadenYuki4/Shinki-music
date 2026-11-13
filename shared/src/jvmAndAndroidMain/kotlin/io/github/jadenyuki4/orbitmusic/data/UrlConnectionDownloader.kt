@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.data
 
+import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import org.schabi.newpipe.extractor.downloader.*
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -22,7 +23,7 @@ internal class UrlConnectionDownloader : Downloader() {
             connection.readTimeout = 12_000
             connection.instanceFollowRedirects = true
             connection.requestMethod = request.httpMethod()
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; OrbitMusic/0.2)")
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; ShinkiMusic/${ShinkiAppInfo.VERSION})")
             request.headers().forEach { (key, values) ->
                 values.forEachIndexed { index, value ->
                     if (index == 0) connection.setRequestProperty(key, value) else connection.addRequestProperty(key, value)

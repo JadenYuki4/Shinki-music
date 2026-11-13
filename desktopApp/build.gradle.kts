@@ -35,6 +35,8 @@ compose.desktop {
             outputBaseDir.set(project.layout.buildDirectory.dir("shinki-music-dist"))
             targetFormats(TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Shinki music"
+            vendor = "JadenYuki4"
+            description = "Shinki music de JadenYuki4"
             packageVersion = providers.gradleProperty("shinkiVersion").get()
             // Explicit UI/source/storage modules, verified with suggestModules; never bundle all JDK modules.
             modules(

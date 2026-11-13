@@ -75,8 +75,8 @@ fun SearchScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                SpotiFlacBrandBadge(size = 26.dp)
-                Text("${SpotiFlacAppInfo.APP_NAME} · Búsqueda y Fuentes", style = MaterialTheme.typography.headlineMedium)
+                ShinkiBrandBadge(size = 26.dp)
+                Text("${ShinkiAppInfo.APP_NAME} · Búsqueda y Fuentes", style = MaterialTheme.typography.headlineMedium)
             }
             SpotiFlacQualityBadge(
                 text = "✦ ${state.repository.shortLabel} · Audio 24-bit",

@@ -37,22 +37,20 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun SpotiFlacEqualizerCard(
-    activeProfile: SoundProfile,
+    player: Playback?,
     onSelectProfile: (SoundProfile) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val p = LocalPalette.current
     val t = LocalLayout.current
-    var eqEnabled by remember { mutableStateOf(true) }
-    var selectedPreset by remember(activeProfile) {
-        mutableStateOf(
-            when (activeProfile) {
-                SoundProfile.BassBoost -> SpotiFlacEqPreset.BassBoost
-                SoundProfile.HiFi -> SpotiFlacEqPreset.TrebleBoost
-                SoundProfile.AnimeOST -> SpotiFlacEqPreset.Vocal
-                SoundProfile.Flat -> SpotiFlacEqPreset.Flat
-            }
-        )
+    var preview by remember { mutableStateOf(EqualizerState()) }
+    val eq = player?.equalizerState?.collectAsState()?.value ?: preview
+    val eqEnabled = eq.enabled
+    val selectedPreset = eq.preset
+    val customBands = eq.bands
+    var showCustomEq by remember { mutableStateOf(false) }
+    fun applyEq(value: EqualizerState) {
+        if (player != null) player.setEqualizer(value) else preview = value
     }
 
     Surface(
@@ -95,7 +93,7 @@ fun SpotiFlacEqualizerCard(
                             )
                         }
                         Text(
-                            "10 bandas · Preamplificador ${SpotiFlacAppInfo.PREAMP_DEFAULT_DB} dB",
+                            "10 bandas · Preamplificador ${ShinkiAppInfo.PREAMP_DEFAULT_DB} dB",
                             style = MaterialTheme.typography.bodySmall,
                             color = p.muted,
                         )
@@ -103,7 +101,7 @@ fun SpotiFlacEqualizerCard(
                 }
                 Switch(
                     checked = eqEnabled,
-                    onCheckedChange = { eqEnabled = it },
+                    onCheckedChange = { applyEq(eq.copy(enabled = it)) },
                 )
             }
 
@@ -156,7 +154,7 @@ fun SpotiFlacEqualizerCard(
                                 )
                             }
 
-                            val bands = if (eqEnabled) selectedPreset.bandsDb else SpotiFlacEqPreset.Flat.bandsDb
+                            val bands = if (eqEnabled) customBands else SpotiFlacEqPreset.Flat.bandsDb
                             val pts = bands.mapIndexed { idx, db ->
                                 val x = w * (idx.toFloat() / (bands.size - 1).coerceAtLeast(1))
                                 val normalized = (db.coerceIn(-12f, 12f) / 12f)
@@ -234,11 +232,27 @@ fun SpotiFlacEqualizerCard(
                         active = isSelected,
                         accentColor = p.primary,
                         onClick = {
-                            selectedPreset = preset
                             onSelectProfile(preset.mappedProfile)
+                            applyEq(EqualizerState(preset, preset.bandsDb, eqEnabled))
                         },
                     )
                 }
+                VividPillButton(
+                    text = "Personalizar 10 bandas",
+                    active = showCustomEq,
+                    accentColor = p.secondary,
+                    onClick = { showCustomEq = !showCustomEq },
+                )
+            }
+
+            if (showCustomEq) {
+                InteractiveEqualizerSliders(
+                    bandsDb = customBands,
+                    onBandChange = { idx, v ->
+                        applyEq(eq.copy(bands = customBands.toMutableList().also { it[idx] = v }))
+                    },
+                    onReset = { applyEq(EqualizerState(SpotiFlacEqPreset.Flat, enabled = eqEnabled)) },
+                )
             }
         }
     }
@@ -462,7 +476,7 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
 
     // 3. SpotiFLAC 10-Band Equalizer Studio (`showcase-dark.png` Screen 4)
     SpotiFlacEqualizerCard(
-        activeProfile = soundProfile,
+        player = player,
         onSelectProfile = player::setSoundProfile,
     )
 
@@ -597,7 +611,7 @@ fun Discovery(player: Playback) {
     ) {
         Column {
             Text(
-                if (personalized) "Recomendado para vos" else "Tendencias en ${SpotiFlacAppInfo.APP_NAME}",
+                if (personalized) "Recomendado para vos" else "Tendencias en ${ShinkiAppInfo.APP_NAME}",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -730,6 +744,7 @@ fun Library(player: Playback, onBrowseSearch: () -> Unit = {}) {
             "Offline" to "↓ Offline ${downloads.size}",
             "Playlists" to "☰ Listas ${playlists.size}",
             "History" to "◷ Historial",
+            "Stats" to "📊 Estadísticas",
         )
         tabs.forEach { (id, label) ->
             VividPillButton(
@@ -759,6 +774,11 @@ fun Library(player: Playback, onBrowseSearch: () -> Unit = {}) {
 
     if (selectedTab == "Offline") {
         OfflineDownloadsPanel(playback = player, onBrowseSearch = onBrowseSearch)
+        return
+    }
+
+    if (selectedTab == "Stats") {
+        ListeningStatsPanel(player)
         return
     }
 
@@ -838,13 +858,5 @@ fun Library(player: Playback, onBrowseSearch: () -> Unit = {}) {
 
 @Composable
 fun Lyrics(player: Playback, item: MusicItem) {
-    var attempt by remember(item.id) { mutableIntStateOf(0) }
-    var result by remember(item.id, attempt) { mutableStateOf<SourceResult<String?>?>(null) }
-    if (attempt > 0) LaunchedEffect(item.id, attempt) { result = player.source.lyrics(item) }
-    when (val text = result) {
-        null -> if (attempt > 0) LinearProgressIndicator()
-        is SourceResult.Success -> Text(text.value ?: "No hay letra disponible para esta canción.")
-        is SourceResult.Failure -> Text(text.error.userMessage())
-    }
-    if (attempt == 0 || result is SourceResult.Failure) TextButton(onClick = { attempt++ }) { Text("Buscar letra en LRCLIB") }
+    SyncedLyricsView(player, item)
 }

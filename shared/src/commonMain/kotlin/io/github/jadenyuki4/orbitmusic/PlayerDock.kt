@@ -58,61 +58,22 @@ val AestheticPetalShape: Shape = RoundedCornerShape(percent = 50)
  */
 val AestheticGemShape: Shape = RoundedCornerShape(22.dp)
 
-/**
- * Official SpotiFLAC Brand Mark rendered directly from `assets/brand/logo/svg/spotiflac-badge.svg`:
- * Deep teal squircle (`#1E4E4F`) with aqua-mint (`#BBEBEC`) soundwave bars + lossless download arrow.
- */
+/** Angular S monogram for Shinki music. */
 @Composable
-fun SpotiFlacBrandBadge(
-    modifier: Modifier = Modifier,
-    size: Dp = 30.dp,
-) {
+fun ShinkiBrandBadge(modifier: Modifier = Modifier, size: Dp = 30.dp) {
+    val palette = LocalPalette.current
     Canvas(modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                listOf(Color(0xFF256162), Color(0xFF1E4E4F), Color(0xFF163B3C))
-            ),
-            size = this.size,
-            cornerRadius = CornerRadius(w * 0.24f, h * 0.24f),
-        )
-        val fg = Color(0xFFBBEBEC)
-        val strokeW = (w * 0.085f).coerceAtLeast(1.8f)
-        // Center vertical arrow shaft (M50 26 V68)
-        drawLine(
-            color = fg,
-            start = Offset(w * 0.50f, h * 0.25f),
-            end = Offset(w * 0.50f, h * 0.68f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round,
-        )
-        // Arrow head (M37 56 L50 69 L63 56)
-        val arrow = Path().apply {
-            moveTo(w * 0.36f, h * 0.55f)
-            lineTo(w * 0.50f, h * 0.70f)
-            lineTo(w * 0.64f, h * 0.55f)
+        val side = this.size.minDimension
+        drawRoundRect(palette.elevated, cornerRadius = CornerRadius(side * 0.24f))
+        val mark = Path().apply {
+            moveTo(side * 0.73f, side * 0.26f)
+            lineTo(side * 0.36f, side * 0.26f)
+            lineTo(side * 0.25f, side * 0.44f)
+            lineTo(side * 0.75f, side * 0.56f)
+            lineTo(side * 0.64f, side * 0.74f)
+            lineTo(side * 0.27f, side * 0.74f)
         }
-        drawPath(
-            path = arrow,
-            color = fg,
-            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-        // Left & right soundwave bars (M33 36 V46, M67 36 V46)
-        drawLine(
-            color = fg,
-            start = Offset(w * 0.31f, h * 0.35f),
-            end = Offset(w * 0.31f, h * 0.47f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = fg,
-            start = Offset(w * 0.69f, h * 0.35f),
-            end = Offset(w * 0.69f, h * 0.47f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round,
-        )
+        drawPath(mark, palette.primary, style = Stroke(width = side * 0.08f, join = StrokeJoin.Round))
     }
 }
 
@@ -958,7 +919,7 @@ fun PlayerDock(playback: Playback?, expand: () -> Unit) {
                         )
                     }
                     Text(
-                        if (pending != null) "Cargando audio…" else state.track?.subtitle ?: "Lady Gaga, Bruno Mars · Listo en ${SpotiFlacAppInfo.APP_NAME}",
+                        if (pending != null) "Cargando audio…" else state.track?.subtitle ?: "Lady Gaga, Bruno Mars · Listo en ${ShinkiAppInfo.APP_NAME}",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = p.muted,

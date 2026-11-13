@@ -20,7 +20,7 @@ fun createDesktopHistoryStore(dbFile: File = defaultDesktopDbFile()): HistorySto
     OrbitDatabase(driver).transaction {
         driver.getConnection().createStatement().use { sql ->
             val version = sql.executeQuery("PRAGMA user_version").use { it.next(); it.getLong(1) }
-            require(version <= OrbitDatabase.Schema.version) { "This database needs a newer Orbit Music." }
+            require(version <= OrbitDatabase.Schema.version) { "Esta biblioteca requiere una versión más reciente de Shinki music." }
             val initialized = sql.executeQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='search_history'").use { it.next() }
             if (!initialized) OrbitDatabase.Schema.create(driver)
             else if (version < OrbitDatabase.Schema.version) {

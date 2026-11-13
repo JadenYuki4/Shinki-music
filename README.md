@@ -1,4 +1,4 @@
-# Shinki music
+# Shinki music de JadenYuki4
 
 Una app para escuchar musica y que tenga mis delirios.
 
@@ -9,6 +9,17 @@ Personal, open-source, ad-free music player foundation for Android, Linux and Wi
 Search songs, albums, artists and playlists, then select a song to play it. Android uses Media3, and Linux and Windows use libmpv. The responsive cyberpunk player includes a persistent transport, seek bar, expandable player and editable theme presets. The wide layout retains Limusic’s sidebar and right panel.
 
 Theme edits are session-only. Full custom token editing, theme JSON, art-derived colors, custom backgrounds and preference persistence arrive in (e). Desktop OS reduced-motion detection is also pending; the app's explicit toggle works on all targets. Android reads the animator preference at launch and on resume. NewPipe initializes lazily on the first request.
+
+## Ediciones
+
+| Versión | Nombre de edición |
+| --- | --- |
+| 1.0 (versión inicial de Android) | Origen |
+| 5.2.7 | Pulso |
+| 5.2.8 | Órbita |
+| 5.3.0 (compilación 168) | Aurora |
+
+Los nombres de las ediciones anteriores son retrospectivos. Las etiquetas y descargas publicadas conservan sus números originales.
 
 ## Project documentation
 
