@@ -23,6 +23,11 @@ class MainActivity : ComponentActivity() {
         systemReduceMotion = !ValueAnimator.areAnimatorsEnabled()
     }
 
+    override fun onStop() {
+        super.onStop()
+        SessionStore().save(orbit.playback.snapshotSession())
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

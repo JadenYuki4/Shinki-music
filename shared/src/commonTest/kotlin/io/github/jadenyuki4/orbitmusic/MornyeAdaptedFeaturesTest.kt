@@ -157,7 +157,7 @@ class MornyeAdaptedFeaturesTest {
         val song2 = testSong("song-beta", "Song Beta", "Artist B", 210L)
         val session = SavedPlaybackSession(
             queue = listOf(song1, song2),
-            currentTrackId = "song-alpha",
+            currentTrackId = "song-beta",
             positionSeconds = 75L,
             shuffle = true,
             repeat = RepeatMode.One,
@@ -172,7 +172,7 @@ class MornyeAdaptedFeaturesTest {
         assertEquals(2, loaded.queue.size)
         assertEquals("song-alpha", loaded.queue[0].id)
         assertEquals("song-beta", loaded.queue[1].id)
-        assertEquals("song-alpha", loaded.currentTrackId)
+        assertEquals("song-beta", loaded.currentTrackId)
         assertEquals(75L, loaded.positionSeconds)
         assertTrue(loaded.shuffle)
         assertEquals(RepeatMode.One, loaded.repeat)
@@ -199,7 +199,13 @@ class MornyeAdaptedFeaturesTest {
         assertEquals(AudioQuality.High, player.audioQuality.value)
         assertEquals(AudioFormatPreference.M4A, player.audioFormat.value)
         assertEquals(SoundProfile.HiFi, player.soundProfile.value)
-        assertFalse(player.engine.state.value.playing) // restoreSession no inicia reproducción de audio
+        assertFalse(player.engine.state.value.playing)
+        assertEquals(session, player.snapshotSession())
+        player.playOrToggle()
+        testScheduler.runCurrent()
+        assertEquals(song2, engine.state.value.track)
+        assertEquals(75L, engine.state.value.position)
+        assertTrue(engine.state.value.playing)
     }
 
     @Test

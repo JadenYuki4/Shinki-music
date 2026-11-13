@@ -587,7 +587,7 @@ fun TimingTransportBar(
     compact: Boolean = false,
 ) {
     val p = LocalPalette.current
-    val state = playback?.engine?.state?.collectAsState()?.value ?: Transport()
+    val state = playback.displayTransport()
     var localVolume by remember { mutableFloatStateOf(1f) }
     var localMuted by remember { mutableStateOf(false) }
     var localShuffle by remember { mutableStateOf(false) }
@@ -702,7 +702,7 @@ fun TimingTransportBar(
             Canvas(Modifier.weight(1f).height(18.dp)) {
                 val trackH = 5.dp.toPx()
                 val cy = size.height / 2f
-                val progress = 0.32f
+                val progress = 0f
                 val thumbX = size.width * progress
                 // Inactive track
                 drawRoundRect(
@@ -730,7 +730,7 @@ fun TimingTransportBar(
             }
         }
         Text(
-            if (duration > 0L) clock(duration) else "3:51",
+            if (duration > 0L) clock(duration) else "0:00",
             color = p.muted,
             style = MaterialTheme.typography.labelSmall,
         )
@@ -845,7 +845,7 @@ fun SignalSleeve(modifier: Modifier) {
 fun PlayerDock(playback: Playback?, expand: () -> Unit) {
     val t = LocalLayout.current
     val p = LocalPalette.current
-    val state = playback?.engine?.state?.collectAsState()?.value ?: Transport()
+    val state = playback.displayTransport()
     val pending = playback?.pending?.collectAsState()?.value
     val error = playback?.failure?.collectAsState()?.value ?: state.error
 
@@ -906,7 +906,7 @@ fun PlayerDock(playback: Playback?, expand: () -> Unit) {
                     ) {
                         AnimeEqualizerBars(playing = state.playing)
                         Text(
-                            pending?.title ?: state.track?.title ?: "Die With A Smile",
+                            pending?.title ?: state.track?.title ?: "Sin reproducción",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
@@ -919,7 +919,7 @@ fun PlayerDock(playback: Playback?, expand: () -> Unit) {
                         )
                     }
                     Text(
-                        if (pending != null) "Cargando audio…" else state.track?.subtitle ?: "Lady Gaga, Bruno Mars · Listo en ${ShinkiAppInfo.APP_NAME}",
+                        if (pending != null) "Cargando audio…" else state.track?.subtitle ?: "Elegí una canción",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = p.muted,

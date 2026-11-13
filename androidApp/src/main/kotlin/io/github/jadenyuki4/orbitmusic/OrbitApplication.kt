@@ -10,5 +10,5 @@ class OrbitApplication : Application() {
     val source by lazy { NewPipeMusicSource() }
     val history by lazy { createAndroidHistoryStore(this) }
     val downloader by lazy { createAndroidTrackDownloader(this) }
-    val playback by lazy { Playback(source, AndroidEngine(this, scope), scope, history, downloader) }
+    val playback by lazy { Playback(source, AndroidEngine(this, scope), scope, history, downloader).also { it.persistSession(scope, SessionStore()) } }
 }

@@ -19,12 +19,13 @@ fun main() = application {
     val downloader = remember { createDesktopTrackDownloader() }
     val engine = remember { MpvEngine() }
     val scope = rememberCoroutineScope()
-    val playback = remember { Playback(source, engine, scope, history, downloader) }
+    val sessions = remember { SessionStore() }
+    val playback = remember { Playback(source, engine, scope, history, downloader).also { it.persistSession(scope, sessions) } }
     val trayAvailable = remember { SystemTray.isSupported() }
     var visible by remember { mutableStateOf(true) }
     DisposableEffect(engine) {
         val keys = mediaKeys(playback, scope)
-        onDispose { keys.cancel(); engine.close() }
+        onDispose { runCatching { sessions.save(playback.snapshotSession()) }; keys.cancel(); engine.close() }
     }
     if (trayAvailable) {
         val icon = remember { object : Painter() {

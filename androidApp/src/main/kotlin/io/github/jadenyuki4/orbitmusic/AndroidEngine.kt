@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 class AndroidEngine(private val context: Context, private val scope: CoroutineScope) : AudioEngine {
     override val state = MutableStateFlow(Transport())
     private var controller: MediaController? = null
-    private var pending: Pair<MusicItem, AudioStream>? = null
+    private var pending: Triple<MusicItem, AudioStream, Long>? = null
     private var tick: Job? = null
     private var disconnected = false
     private val listener = object : Player.Listener {
@@ -51,7 +51,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
                 controller = player
                 player.addListener(listener)
                 refresh(player)
-                pending?.let { (track, stream) -> load(track, stream) }
+                pending?.let { (track, stream, pos) -> loadAt(track, stream, pos) }
                 pending = null
             } catch (e: Exception) {
                 future = null
@@ -70,10 +70,11 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             player.playerError?.let { "Audio no disponible. Reintentá para solicitar una transmisión nueva." }, player.playbackState == Player.STATE_ENDED)
     }
 
-    override fun load(track: MusicItem, stream: AudioStream) {
+    override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
+    override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
         val player = controller
         if (player == null) {
-            pending = track to stream
+            pending = Triple(track, stream, seconds)
             if (future == null && !disconnected) connect()
             return
         }
@@ -81,7 +82,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
         else android.net.Uri.fromFile(java.io.File(stream.url))
         player.setMediaItem(MediaItem.Builder().setMediaId(track.id).setUri(mediaUri).setMimeType(stream.mimeType)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.subtitle)
-                .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse)).build()).build())
+                .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse)).build()).build(), seconds * 1000)
         player.prepare()
         player.play()
     }

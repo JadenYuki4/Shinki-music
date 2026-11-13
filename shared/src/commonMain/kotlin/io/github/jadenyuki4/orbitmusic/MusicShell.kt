@@ -70,7 +70,6 @@ private val spotiFlacShowcaseAlbums = listOf(
  */
 @Composable
 fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Composable () -> Unit) {
-    BindPlaybackSessionPersistence(playback)
     val t = LocalLayout.current
     val p = LocalPalette.current
     val effects = LocalEffects.current
@@ -78,9 +77,8 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     var panel by remember { mutableStateOf("Cola") }
     var theater by remember { mutableStateOf(false) }
     var showEqualizerOnHome by remember { mutableStateOf(true) }
-    val trackFlow = remember(playback) { playback?.engine?.state?.map { it.track }?.distinctUntilChanged() }
-    val track = trackFlow?.collectAsState(initial = playback?.engine?.state?.value?.track)?.value
-    val transportState = playback?.engine?.state?.collectAsState()?.value ?: Transport()
+    val transportState = playback.displayTransport()
+    val track = transportState.track
 
     var fallbackQuality by remember { mutableStateOf(AudioQuality.High) }
     var fallbackFormat by remember { mutableStateOf(AudioFormatPreference.Auto) }
@@ -449,7 +447,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                         ) {
                                             Text(
-                                                text = track?.title ?: "Die With A Smile",
+                                                text = track?.title ?: "Sin reproducción",
                                                 style = MaterialTheme.typography.titleLarge,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White,
@@ -457,7 +455,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                             Text(
-                                                text = track?.subtitle ?: "Lady Gaga, Bruno Mars",
+                                                text = track?.subtitle ?: "Elegí una canción para empezar",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = Color(0xFFD0DCFA),
                                                 maxLines = 1,
@@ -465,8 +463,8 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                             )
                                             Spacer(Modifier.height(4.dp))
                                             val prog = if (transportState.duration > 0L) {
-                                                (transportState.position.toFloat() / transportState.duration.toFloat()).coerceIn(0.05f, 1f)
-                                            } else 0.32f
+                                                (transportState.position.toFloat() / transportState.duration.toFloat()).coerceIn(0f, 1f)
+                                            } else 0f
                                             LinearProgressIndicator(
                                                 progress = { prog },
                                                 modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(percent = 50)),
@@ -478,11 +476,8 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                             playing = transportState.playing,
                                             size = 56.dp,
                                             onClick = {
-                                                if (playback != null) playback.playOrToggle()
-                                                else {
-                                                    search.controller.chooseSuggestion("Lady Gaga Bruno Mars Die With A Smile")
-                                                    destination = Destination.Search
-                                                }
+                                                if (playback != null && track != null) playback.playOrToggle()
+                                                else destination = Destination.Search
                                             },
                                         )
                                     }
@@ -575,13 +570,21 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                         Text("Ver todo →", color = p.primary)
                                     }
                                 }
-                                SpotiFlacAlbumShelf(
-                                    albums = spotiFlacShowcaseAlbums,
-                                    onPlayAlbum = { card ->
-                                        search.controller.chooseSuggestion(card.query)
-                                        destination = Destination.Search
-                                    },
-                                )
+                                val favorites = remember(playback) { playback?.history?.observeFavorites() }
+                                    ?.collectAsState(emptyList())?.value.orEmpty()
+                                if (favorites.isEmpty()) {
+                                    Text("Acá aparecerán las canciones que marques con Me gusta.", color = p.muted)
+                                } else {
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(t.small)) {
+                                        favorites.take(12).forEach { song ->
+                                            Column(Modifier.width(t.artwork).clickable { playback?.playFrom(song, favorites) }) {
+                                                TrackArt(song, Modifier.size(t.artwork))
+                                                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(song.subtitle, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // 6. SpotiFLAC 10-Band Equalizer Studio (`showcase-dark.png` Screen 4)
                                 if (showEqualizerOnHome) {

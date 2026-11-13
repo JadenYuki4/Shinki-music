@@ -2,7 +2,9 @@
 package io.github.jadenyuki4.orbitmusic
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import com.russhwolf.settings.Settings
 import io.github.jadenyuki4.orbitmusic.domain.AudioFormatPreference
@@ -115,15 +117,24 @@ fun Playback.restoreSession(session: SavedPlaybackSession) {
     audioQuality.value = session.quality
     audioFormat.value = session.format
     soundProfile.value = session.profile
+    if (engine.state.value.track == null && queue.value.isEmpty()) {
+        session.queue.find { it.id == session.currentTrackId }?.let { item ->
+            restored.value = Transport(track = item, position = session.positionSeconds, duration = item.durationSeconds ?: 0)
+        }
+    }
     if (queue.value.isEmpty() && session.queue.isNotEmpty()) {
         queue.value = session.queue
     }
 }
 
 fun Playback.snapshotSession(): SavedPlaybackSession {
-    val transport = engine.state.value
+    val transport = engine.state.value.takeIf { it.track != null } ?: restored.value ?: Transport()
     return SavedPlaybackSession(
-        queue = queue.value,
+        queue = queue.value.let { items ->
+            val current = transport.track
+            if (current != null && items.take(SessionStore.MAX_QUEUE).none { it.id == current.id })
+                items.take(SessionStore.MAX_QUEUE - 1) + current else items
+        },
         currentTrackId = transport.track?.id,
         positionSeconds = transport.position,
         shuffle = shuffle.value,
@@ -150,14 +161,16 @@ private data class SessionSignal(
 )
 
 @Composable
-fun BindPlaybackSessionPersistence(
-    playback: Playback?,
-    store: SessionStore = remember { SessionStore() },
-) {
-    LaunchedEffect(playback, store) {
-        val pb = playback ?: return@LaunchedEffect
-        // Restore first, then start persisting, so the saved session is never overwritten by an empty one.
-        runCatching { store.load()?.let { pb.restoreSession(it) } }
+internal fun Playback?.displayTransport(): Transport {
+    val live = this?.engine?.state?.collectAsState()?.value
+    val saved = this?.restored?.collectAsState()?.value
+    return live?.takeIf { it.track != null } ?: saved ?: live ?: Transport()
+}
+
+fun Playback.persistSession(scope: CoroutineScope, store: SessionStore) {
+    val pb = this
+    store.load()?.let(pb::restoreSession)
+    scope.launch {
         val settingsFlow = combine(pb.queue, pb.shuffle, pb.repeat, pb.audioQuality, pb.audioFormat) { q, s, r, qu, f ->
             SessionSignal(q, s, r, qu, f, SoundProfile.AnimeOST, null, 0L)
         }

@@ -70,7 +70,8 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         check(api!!.mpv_command(handle!!, StringArray(args, "UTF-8")) >= 0)
     }
 
-    override fun load(track: MusicItem, stream: AudioStream) {
+    override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
+    override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
         scope.launch {
             polling?.cancel()
             try {
@@ -78,10 +79,10 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                 drainEvents()
                 lastStream = stream
                 ended = false
-                command("loadfile", stream.url, "replace")
+                command("loadfile", stream.url, "replace", "-1", "start=$seconds")
                 applySoundProfile(activeProfile)
                 command("set", "pause", "no")
-                state.value = Transport(track, playing = true, duration = track.durationSeconds ?: 0)
+                state.value = Transport(track, playing = true, position = seconds, duration = track.durationSeconds ?: 0)
                 polling = launch {
                     while (isActive && !ended) {
                         drainEvents()

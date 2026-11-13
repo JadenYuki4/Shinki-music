@@ -263,7 +263,7 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
     val t = LocalLayout.current
     val p = LocalPalette.current
     val scope = rememberCoroutineScope()
-    val state by player.engine.state.collectAsState()
+    val state = player.displayTransport()
     val favorite by remember(item.id, player) { player.history.observeIsFavorite(item.id) }.collectAsState(false)
     val shuffle by player.shuffle.collectAsState()
     val repeat by player.repeat.collectAsState()

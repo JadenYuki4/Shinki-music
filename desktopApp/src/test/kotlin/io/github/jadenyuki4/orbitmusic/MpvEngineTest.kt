@@ -75,9 +75,9 @@ class MpvEngineTest {
             }
             MpvEngine("null").use { engine ->
                 val track = MusicItem("test", "Sample", "", MusicKind.Song)
-                engine.load(track, AudioStream(clip.absolutePath, "audio/wav"))
+                engine.loadAt(track, AudioStream(clip.absolutePath, "audio/wav"), 2)
                 withTimeout(15000) {
-                    val started = engine.state.first { it.error != null || it.position >= 1 }
+                    val started = engine.state.first { it.error != null || it.position >= 3 }
                     assertNull(started.error)
                     engine.toggle()
                     engine.state.first { !it.playing }

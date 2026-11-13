@@ -13,6 +13,10 @@ data class Transport(val track: MusicItem? = null, val playing: Boolean = false,
 interface AudioEngine {
     val state: StateFlow<Transport>
     fun load(track: MusicItem, stream: AudioStream)
+    fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
+        load(track, stream)
+        if (seconds > 0) seek(seconds)
+    }
     fun toggle()
     fun seek(seconds: Long)
     fun volume(value: Float)
@@ -37,6 +41,7 @@ class Playback(
     val downloader: TrackDownloader = NoOpTrackDownloader,
 ) {
     internal val taste by lazy { TasteStore(com.russhwolf.settings.Settings()) }
+    internal val restored = MutableStateFlow<Transport?>(null)
     val queue = MutableStateFlow<List<MusicItem>>(emptyList())
     val shuffle = MutableStateFlow(false)
     val autoplay = MutableStateFlow(false)
@@ -129,6 +134,8 @@ class Playback(
             engine.toggle()
         } else if (state.error != null) {
             retry()
+        } else if (restored.value?.track != null) {
+            restored.value?.let { resume -> resume.track?.let { select(it, resume.position) } }
         } else if (queue.value.isNotEmpty()) {
             select(queue.value.first())
         } else {
@@ -300,6 +307,7 @@ class Playback(
         resolve?.cancel()
         enqueue(track)
         visited.add(track.id)
+        if (track.id != restored.value?.track?.id) restored.value = null
         lastRequest = track
         pending.value = track
         failure.value = null
@@ -316,11 +324,9 @@ class Playback(
                         formatLabel = offline.formatLabel?.let { "$it · OFFLINE" } ?: "OFFLINE",
                     )
                     currentStream.value = localStream
-                    engine.load(track, localStream)
+                    engine.loadAt(track, localStream, resumePositionSeconds)
                     engine.soundProfile(soundProfile.value)
-                    if (resumePositionSeconds > 0L) {
-                        engine.seek(resumePositionSeconds)
-                    }
+
                     return@launch
                 } else if (offline != null) {
                     history.removeDownload(track.id)
@@ -331,11 +337,9 @@ class Playback(
                 when (result) {
                     is SourceResult.Success -> {
                         currentStream.value = result.value
-                        engine.load(track, result.value)
+                        engine.loadAt(track, result.value, resumePositionSeconds)
                         engine.soundProfile(soundProfile.value)
-                        if (resumePositionSeconds > 0L) {
-                            engine.seek(resumePositionSeconds)
-                        }
+
                     }
                     is SourceResult.Failure -> failure.value = result.error.userMessage()
                 }
@@ -349,7 +353,7 @@ class Playback(
         }
     }
 
-    fun retry() { (lastRequest ?: engine.state.value.track)?.let(::select) }
+    fun retry() { (lastRequest ?: engine.state.value.track)?.let { select(it, restored.value?.takeIf { r -> r.track?.id == it.id }?.position ?: 0) } }
 
     fun download(track: MusicItem) {
         if (track.kind != MusicKind.Song) return

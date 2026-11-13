@@ -18,6 +18,7 @@ Theme edits are session-only. Full custom token editing, theme JSON, art-derived
 | 5.2.7 | Pulso |
 | 5.2.8 | Órbita |
 | 5.3.0 (compilación 168) | Aurora |
+| 5.3.1 (compilación 169) | Aurora · reanudación de sesión |
 
 Los nombres de las ediciones anteriores son retrospectivos. Las etiquetas y descargas publicadas conservan sus números originales.
 
