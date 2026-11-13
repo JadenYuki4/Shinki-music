@@ -1,0 +1,56 @@
+name: Build and test Shinki
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  packages:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      - name: Prepare Windows native audio
+        if: runner.os == 'Windows'
+        run: ./scripts/prepare-libmpv.ps1
+      - name: Test and build Windows and Android
+        if: runner.os == 'Windows'
+        run: ./gradlew.bat :shared:jvmTest :desktopApp:test :desktopApp:packageMsi :androidApp:assembleDebug
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y fakeroot libmpv2
+      - name: Build Linux distribution
+        if: runner.os == 'Linux'
+        run: bash gradlew :shared:jvmTest :desktopApp:packageDeb :desktopApp:createDistributable
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          appdir="$RUNNER_TEMP/Shinki.AppDir"
+          mkdir -p "$appdir/usr"
+          cp -a "desktopApp/build/shinki-music-dist/main/app/Shinki music/." "$appdir/usr/"
+          ln -s "usr/bin/Shinki music" "$appdir/AppRun"
+          cp "$(find "$appdir/usr" -name '*.png' -print -quit)" "$appdir/shinki.png"
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Shinki music' 'Exec=AppRun' 'Icon=shinki' 'Categories=AudioVideo;Audio;' > "$appdir/shinki.desktop"
+          curl -fsSL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o "$RUNNER_TEMP/appimagetool"
+          echo "e8c1169c4af66c3184d7ee110713d4be04befe671fa358e2c1591ee840553b03  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          ARCH=x86_64 "$RUNNER_TEMP/appimagetool" --appimage-extract-and-run "$appdir" Shinki-music-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Shinki-${{ runner.os }}
+          if-no-files-found: error
+          path: |
+            desktopApp/build/shinki-music-dist/main/msi/*.msi
+            desktopApp/build/shinki-music-dist/main/deb/*.deb
+            *.AppImage
+            androidApp/build/outputs/apk/debug/*.apk
