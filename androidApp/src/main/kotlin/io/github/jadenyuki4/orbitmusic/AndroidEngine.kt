@@ -40,7 +40,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
                         tick?.cancel()
                         this@AndroidEngine.controller = null
                         future = null
-                        state.value = state.value.copy(playing = false, error = "The audio session disconnected. Retry to reconnect.")
+                        state.value = state.value.copy(playing = false, error = "La sesión de audio se desconectó. Reintentá para reconectar.")
                     }
                 }
             }).buildAsync()
@@ -55,7 +55,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
                 pending = null
             } catch (e: Exception) {
                 future = null
-                state.value = Transport(error = "The Android playback service could not connect.")
+                state.value = Transport(error = "No se pudo conectar con el servicio de reproducción de Android.")
             }
         }, androidx.core.content.ContextCompat.getMainExecutor(context))
     }
@@ -63,10 +63,11 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
     private fun refresh(player: Player) {
         val item = player.currentMediaItem
         val track = item?.let { MusicItem(it.mediaId, it.mediaMetadata.title.toString(),
-            it.mediaMetadata.artist?.toString().orEmpty(), MusicKind.Song) }
+            it.mediaMetadata.artist?.toString().orEmpty(), MusicKind.Song, it.mediaMetadata.artworkUri?.toString(),
+            player.duration.takeIf { length -> length > 0 }?.div(1000)) }
         state.value = Transport(track, player.playWhenReady && player.playbackState != Player.STATE_ENDED,
             player.currentPosition.coerceAtLeast(0) / 1000, player.duration.coerceAtLeast(0) / 1000,
-            player.playerError?.let { "Audio unavailable. Retry to request a fresh stream." })
+            player.playerError?.let { "Audio no disponible. Reintentá para solicitar una transmisión nueva." }, player.playbackState == Player.STATE_ENDED)
     }
 
     override fun load(track: MusicItem, stream: AudioStream) {
@@ -76,11 +77,16 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             if (future == null && !disconnected) connect()
             return
         }
-        player.setMediaItem(MediaItem.Builder().setMediaId(track.id).setUri(stream.url).setMimeType(stream.mimeType)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.subtitle).build()).build())
+        val mediaUri = if (stream.url.contains("://")) android.net.Uri.parse(stream.url)
+        else android.net.Uri.fromFile(java.io.File(stream.url))
+        player.setMediaItem(MediaItem.Builder().setMediaId(track.id).setUri(mediaUri).setMimeType(stream.mimeType)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.subtitle)
+                .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse)).build()).build())
         player.prepare()
         player.play()
     }
+    override fun volume(value: Float) { controller?.volume = value }
+    override fun speed(value: Float) { controller?.setPlaybackSpeed(value) }
     override fun toggle() {
         controller?.run {
             if (playbackState == Player.STATE_ENDED) { seekTo(0); play() }

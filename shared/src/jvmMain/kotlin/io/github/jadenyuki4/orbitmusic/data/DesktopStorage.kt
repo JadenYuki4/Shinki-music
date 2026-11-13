@@ -5,6 +5,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.russhwolf.settings.PreferencesSettings
 import io.github.jadenyuki4.orbitmusic.db.OrbitDatabase
 import io.github.jadenyuki4.orbitmusic.domain.HistoryStore
+import io.github.jadenyuki4.orbitmusic.domain.TrackDownloader
 import java.io.File
 import java.util.prefs.Preferences
 
@@ -15,13 +16,19 @@ import java.util.prefs.Preferences
  */
 fun createDesktopHistoryStore(dbFile: File = defaultDesktopDbFile()): HistoryStore {
     dbFile.parentFile?.mkdirs()
-    val isNew = !dbFile.exists()
     val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
-    if (isNew) {
-        OrbitDatabase.Schema.create(driver)
-    } else {
-        // Ensure tables exist if an empty file was created previously.
-        runCatching { OrbitDatabase.Schema.create(driver) }
+    OrbitDatabase(driver).transaction {
+        driver.getConnection().createStatement().use { sql ->
+            val version = sql.executeQuery("PRAGMA user_version").use { it.next(); it.getLong(1) }
+            require(version <= OrbitDatabase.Schema.version) { "This database needs a newer Orbit Music." }
+            val initialized = sql.executeQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='search_history'").use { it.next() }
+            if (!initialized) OrbitDatabase.Schema.create(driver)
+            else if (version < OrbitDatabase.Schema.version) {
+                // The first desktop release left SQLite user_version at zero.
+                OrbitDatabase.Schema.migrate(driver, maxOf(version, 1), OrbitDatabase.Schema.version)
+            }
+            sql.execute("PRAGMA user_version = ${OrbitDatabase.Schema.version}")
+        }
     }
     val prefs = Preferences.userNodeForPackage(SqlHistoryStore::class.java)
     return SqlHistoryStore(driver = driver, settings = PreferencesSettings(prefs))
@@ -40,3 +47,23 @@ private fun defaultDesktopDbFile(): File {
     }
     return File(baseDir, "orbit.db")
 }
+
+fun defaultDesktopDownloadsDir(): File {
+    val home = System.getProperty("user.home")?.takeIf { it.isNotBlank() }
+    return if (home != null) File(home, "Music/Shinki music")
+    else File(defaultDesktopDbFile().parentFile, "downloads")
+}
+
+fun createDesktopTrackDownloader(downloadsDir: File = defaultDesktopDownloadsDir()): TrackDownloader =
+    FileTrackDownloader(
+        downloadsDir = downloadsDir,
+        onOpenFolder = { dir ->
+            runCatching {
+                dir.mkdirs()
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    java.awt.Desktop.getDesktop().open(dir)
+                    true
+                } else false
+            }.getOrDefault(false)
+        },
+    )

@@ -12,7 +12,7 @@ properties = {
            "SupportedUriSchemes": ("as", []), "SupportedMimeTypes": ("as", [])},
     PLAYER: {"PlaybackStatus": ("s", "Stopped"), "CanControl": ("b", True),
              "CanPlay": ("b", True), "CanPause": ("b", True), "CanSeek": ("b", False),
-             "CanGoNext": ("b", False), "CanGoPrevious": ("b", False),
+             "CanGoNext": ("b", True), "CanGoPrevious": ("b", True),
              "Metadata": ("a{sv}", {}), "Volume": ("d", 1.0), "Rate": ("d", 1.0),
              "MinimumRate": ("d", 1.0), "MaximumRate": ("d", 1.0), "Position": ("x", 0)}
 }
@@ -20,7 +20,7 @@ xml = "<node>"
 for interface, props in properties.items():
     xml += f'<interface name="{interface}">'
     if interface == PLAYER:
-        xml += "".join(f'<method name="{m}"/>' for m in ("Play", "Pause", "PlayPause"))
+        xml += "".join(f'<method name="{m}"/>' for m in ("Play", "Pause", "PlayPause", "Next", "Previous"))
     for key, (typ, _) in props.items():
         xml += f'<property name="{key}" type="{typ}" access="read"/>'
     xml += "</interface>"

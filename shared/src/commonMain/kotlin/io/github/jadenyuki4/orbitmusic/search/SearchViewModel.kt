@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.*
 data class SearchState(
     val query: String = "",
     val kind: MusicKind = MusicKind.Song,
+    val repository: MusicRepository = MusicRepository.All,
     val history: List<SearchHistoryEntry> = emptyList(),
     val incognito: Boolean = false,
     val suggestions: List<String> = emptyList(),
@@ -25,11 +26,11 @@ data class SearchState(
 
 /** Testable state owner. Generation checks also reject sources that ignore cancellation. */
 class SearchController(
-    private val source: MusicSource,
+    internal val source: MusicSource,
     private val scope: CoroutineScope,
-    private val historyStore: HistoryStore = InMemoryHistoryStore(),
+    internal val historyStore: HistoryStore = InMemoryHistoryStore(),
 ) {
-    private val mutable = MutableStateFlow(SearchState())
+    private val mutable = MutableStateFlow(SearchState(repository = source.repository))
     val state: StateFlow<SearchState> = mutable.asStateFlow()
     private var revision = 0L
     private var suggestionsJob: Job? = null
@@ -48,6 +49,21 @@ class SearchController(
         }
     }
 
+    fun selectRepository(repository: MusicRepository) {
+        if (repository == mutable.value.repository && source.repository == repository) return
+        invalidate()
+        source.repository = repository
+        val current = mutable.value
+        mutable.value = SearchState(
+            query = current.query,
+            kind = current.kind,
+            repository = repository,
+            history = current.history,
+            incognito = current.incognito,
+        )
+        if (mutable.value.query.isNotBlank()) submit()
+    }
+
     fun changeQuery(value: String) {
         val query = value.take(200)
         if (query == mutable.value.query) return
@@ -56,6 +72,7 @@ class SearchController(
         mutable.value = SearchState(
             query = query,
             kind = current.kind,
+            repository = current.repository,
             history = current.history,
             incognito = current.incognito,
         )
@@ -69,6 +86,7 @@ class SearchController(
         mutable.value = SearchState(
             query = current.query,
             kind = kind,
+            repository = current.repository,
             history = current.history,
             incognito = current.incognito,
         )
@@ -87,6 +105,7 @@ class SearchController(
         mutable.value = SearchState(
             query = query,
             kind = entry.kind,
+            repository = current.repository,
             history = current.history,
             incognito = current.incognito,
             submitted = true,
@@ -129,6 +148,7 @@ class SearchController(
             mutable.value = SearchState(
                 query = old.query,
                 kind = old.kind,
+                repository = old.repository,
                 history = old.history,
                 incognito = old.incognito,
             )
@@ -137,6 +157,7 @@ class SearchController(
         mutable.value = SearchState(
             query = old.query,
             kind = old.kind,
+            repository = old.repository,
             history = old.history,
             incognito = old.incognito,
             submitted = true,
@@ -196,11 +217,11 @@ class SearchViewModel(
 }
 
 fun SourceError.userMessage(): String = when (this) {
-    SourceError.Network -> "Connection failed. Check your network and try again."
-    SourceError.RateLimited -> "YouTube is limiting requests. Wait a moment before retrying."
-    SourceError.Unavailable -> "This content is unavailable in your region or has been removed."
-    SourceError.Unsupported -> "This feature is not available from the current music source yet."
-    SourceError.SourceChanged -> "YouTube returned an unexpected response. Retry or update the app if it continues."
-    SourceError.InvalidRequest -> "This search page expired. Search again to refresh the results."
-    SourceError.VerificationRequired -> "YouTube requires verification. This app cannot complete it; try again later."
+    SourceError.Network -> "Falló la conexión. Verificá tu red e intentá de nuevo."
+    SourceError.RateLimited -> "YouTube está limitando las solicitudes. Esperá un momento antes de reintentar."
+    SourceError.Unavailable -> "Este contenido no está disponible en tu región o fue eliminado."
+    SourceError.Unsupported -> "Esta función aún no está disponible en la fuente de música actual."
+    SourceError.SourceChanged -> "La fuente devolvió una respuesta inesperada. Reintentá o actualizá la app si continúa."
+    SourceError.InvalidRequest -> "Esta página de búsqueda expiró. Volvé a buscar para actualizar los resultados."
+    SourceError.VerificationRequired -> "YouTube requiere verificación. Esta app no puede completarla; intentá más tarde."
 }

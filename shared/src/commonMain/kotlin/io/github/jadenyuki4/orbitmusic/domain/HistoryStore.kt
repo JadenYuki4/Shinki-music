@@ -19,11 +19,23 @@ data class PlayEventRecord(
     val playedAtEpochMillis: Long,
 )
 
+data class DownloadedTrack(
+    val item: MusicItem,
+    val localPath: String,
+    val mimeType: String,
+    val formatLabel: String? = null,
+    val bitrateKbps: Int? = null,
+    val fileSizeBytes: Long = 0L,
+    val artworkLocalPath: String? = null,
+    val downloadedAtEpochMillis: Long = 0L,
+)
+
 /**
  * Local, privacy-first history and favorites store.
  * When [incognito] is true, [recordSearch] and [recordPlay] are no-ops.
  */
 interface HistoryStore {
+    val playlists: io.github.jadenyuki4.orbitmusic.Playlists
     val incognito: StateFlow<Boolean>
     fun setIncognito(enabled: Boolean)
 
@@ -45,4 +57,11 @@ interface HistoryStore {
     fun observeIsFavorite(songId: String): Flow<Boolean>
     suspend fun toggleFavorite(item: MusicItem): Boolean
     suspend fun clearFavorites()
+
+    fun observeDownloads(): Flow<List<DownloadedTrack>>
+    fun observeIsDownloaded(songId: String): Flow<Boolean>
+    suspend fun getDownload(songId: String): DownloadedTrack?
+    suspend fun saveDownload(track: DownloadedTrack)
+    suspend fun removeDownload(songId: String)
+    suspend fun clearDownloads()
 }

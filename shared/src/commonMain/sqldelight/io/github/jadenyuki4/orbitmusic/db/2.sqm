@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS downloaded_track (
+    song_id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    artwork_url TEXT,
+    artwork_local_path TEXT,
+    duration_seconds INTEGER,
+    local_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    format_label TEXT,
+    bitrate_kbps INTEGER,
+    file_size_bytes INTEGER NOT NULL,
+    downloaded_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_downloaded_track_downloaded_at ON downloaded_track(downloaded_at DESC);

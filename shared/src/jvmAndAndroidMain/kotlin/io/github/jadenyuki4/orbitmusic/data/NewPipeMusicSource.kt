@@ -14,6 +14,15 @@ import java.util.UUID
 class NewPipeMusicSource internal constructor(private val gateway: ExtractorGateway) : MusicSource {
     constructor() : this(NewPipeGateway())
 
+    override var repository: MusicRepository
+        get() = gateway.repository
+        set(value) {
+            if (gateway.repository != value) {
+                gateway.repository = value
+                cursors.clear()
+            }
+        }
+
     private data class Cursor(val query: String, val kind: MusicKind, val size: Int,
         val pending: List<MusicItem>, val upstream: Page?)
     private val mutex = Mutex()
@@ -60,11 +69,34 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
         }
     }
 
-    override suspend fun discover(page: String?, pageSize: Int): SourceResult<MusicPage> =
-        SourceResult.Failure(SourceError.Unsupported)
-    override suspend fun stream(songId: String): SourceResult<AudioStream> {
+    override suspend fun lyrics(item: MusicItem): SourceResult<String?> = guarded {
+        val artist = item.subtitle.removeSuffix(" - Topic").trim()
+        fun encode(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
+        val url = "https://lrclib.net/api/search?track_name=${encode(item.title)}&artist_name=${encode(artist)}"
+        val request = org.schabi.newpipe.extractor.downloader.Request.newBuilder().get(url)
+            .headers(mapOf("User-Agent" to listOf("OrbitMusic/1.0 (io.github.jadenyuki4.orbitmusic)"))).build()
+        val body = UrlConnectionDownloader().execute(request).responseBody()
+        val records = com.grack.nanojson.JsonParser.array().from(body)
+        records.filterIsInstance<com.grack.nanojson.JsonObject>().firstOrNull {
+            it.getString("trackName").equals(item.title, true) && it.getString("artistName").equals(artist, true)
+        }?.getString("plainLyrics")?.takeIf { it.isNotBlank() }?.take(20000)
+    }
+
+    override suspend fun discover(page: String?, pageSize: Int): SourceResult<MusicPage> {
+        if (page != null || pageSize !in 1..50) return SourceResult.Failure(SourceError.InvalidRequest)
+        return guarded { MusicPage(gateway.trending().distinctBy { it.id }.take(pageSize)) }
+    }
+
+    override suspend fun stream(songId: String): SourceResult<AudioStream> =
+        stream(songId, AudioQuality.High, AudioFormatPreference.Auto)
+
+    override suspend fun stream(
+        songId: String,
+        quality: AudioQuality,
+        format: AudioFormatPreference,
+    ): SourceResult<AudioStream> {
         if (!songId.startsWith("https://")) return SourceResult.Failure(SourceError.InvalidRequest)
-        return when (val result = guarded { gateway.stream(songId) }) {
+        return when (val result = guarded { gateway.stream(songId, quality, format) }) {
             is SourceResult.Failure -> result
             is SourceResult.Success -> result.value?.let { SourceResult.Success(it) }
                 ?: SourceResult.Failure(SourceError.Unavailable)

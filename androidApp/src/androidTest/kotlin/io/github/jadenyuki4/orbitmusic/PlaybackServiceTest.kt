@@ -39,9 +39,12 @@ class PlaybackServiceTest {
                 withContext(Dispatchers.Main) { activity.moveTaskToBack(true) }
                 engine.state.first { it.position >= 3 }
                 val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                assertTrue(notifications.activeNotifications.any {
-                    it.notification.extras.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION)
-                })
+                // Android posts the media notification asynchronously, particularly on a cold emulator.
+                withTimeout(12_000) {
+                    while (notifications.activeNotifications.none {
+                        it.notification.extras.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION)
+                    }) delay(200)
+                }
                 withContext(Dispatchers.Main) { engine.toggle() }
                 engine.state.first { !it.playing }
                 withContext(Dispatchers.Main) { engine.seek(8) }

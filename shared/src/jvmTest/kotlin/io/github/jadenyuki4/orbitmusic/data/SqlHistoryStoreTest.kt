@@ -9,6 +9,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import java.io.File
+import java.nio.file.Files
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -135,5 +137,100 @@ class SqlHistoryStoreTest {
         assertFalse(store.toggleFavorite(song))
         assertFalse(store.observeIsFavorite(song.id).first())
         assertTrue(store.observeFavorites().first().isEmpty())
+    }
+
+    @Test
+    fun savesRemovesAndClearsOfflineDownloads() = runTest {
+        val store = newStore()
+        val songA = MusicItem("https://music.youtube.com/watch?v=dl1", "Offline One", "Artist 1", MusicKind.Song, durationSeconds = 190L)
+        val songB = MusicItem("https://music.youtube.com/watch?v=dl2", "Offline Two", "Artist 2", MusicKind.Song, durationSeconds = 210L)
+
+        now = 1_000L
+        store.saveDownload(
+            DownloadedTrack(
+                item = songA,
+                localPath = "/tmp/one.m4a",
+                mimeType = "audio/mp4",
+                formatLabel = "M4A",
+                bitrateKbps = 256,
+                fileSizeBytes = 1024L,
+            )
+        )
+        now = 2_000L
+        store.saveDownload(
+            DownloadedTrack(
+                item = songB,
+                localPath = "/tmp/two.webm",
+                mimeType = "audio/webm",
+                formatLabel = "OPUS",
+                bitrateKbps = 160,
+                fileSizeBytes = 2048L,
+            )
+        )
+
+        assertTrue(store.observeIsDownloaded(songA.id).first())
+        assertEquals(2000L, store.getDownload(songB.id)?.downloadedAtEpochMillis)
+        val downloads = store.observeDownloads().first()
+        assertEquals(listOf(songB.id, songA.id), downloads.map { it.item.id })
+
+        store.removeDownload(songA.id)
+        assertFalse(store.observeIsDownloaded(songA.id).first())
+        assertNull(store.getDownload(songA.id))
+        assertEquals(listOf(songB.id), store.observeDownloads().first().map { it.item.id })
+
+        store.clearDownloads()
+        assertTrue(store.observeDownloads().first().isEmpty())
+    }
+
+    @Test
+    fun fileTrackDownloaderSavesAudioFileAndPersistsMetadata() = runTest {
+        val tempRoot = Files.createTempDirectory("shinki-dl-test").toFile()
+        try {
+            val sourceAudio = File(tempRoot, "sample.m4a").apply {
+                writeBytes(ByteArray(256) { it.toByte() })
+            }
+            val targetDir = File(tempRoot, "downloads")
+            val downloader = FileTrackDownloader(targetDir)
+            val song = MusicItem(
+                id = "https://music.youtube.com/watch?v=local1",
+                title = "Mi Canción: Test/01",
+                subtitle = "Artista <Demo>",
+                kind = MusicKind.Song,
+                durationSeconds = 200L,
+            )
+            val saved = downloader.downloadToLocal(
+                item = song,
+                stream = AudioStream(
+                    url = sourceAudio.toURI().toString(),
+                    mimeType = "audio/mp4",
+                    bitrateKbps = 320,
+                    formatLabel = "M4A",
+                ),
+            )
+            assertTrue(downloader.exists(saved.localPath))
+            assertTrue(File(saved.localPath).name.endsWith(".m4a"))
+            assertEquals(256L, saved.fileSizeBytes)
+
+            val store = newStore()
+            store.saveDownload(
+                DownloadedTrack(
+                    item = song,
+                    localPath = saved.localPath,
+                    mimeType = saved.mimeType,
+                    formatLabel = "M4A",
+                    bitrateKbps = 320,
+                    fileSizeBytes = saved.fileSizeBytes,
+                    artworkLocalPath = saved.artworkLocalPath,
+                )
+            )
+            val persisted = store.getDownload(song.id)
+            assertNotNull(persisted)
+            assertEquals(saved.localPath, persisted.localPath)
+
+            downloader.delete(saved.localPath)
+            assertFalse(downloader.exists(saved.localPath))
+        } finally {
+            tempRoot.deleteRecursively()
+        }
     }
 }

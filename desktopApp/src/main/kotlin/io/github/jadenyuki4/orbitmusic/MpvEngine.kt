@@ -29,6 +29,7 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     private var polling: Job? = null
     private var lastStream: AudioStream? = null
     private var ended = false
+    private var activeProfile: SoundProfile = SoundProfile.AnimeOST
 
     private fun open(): Pointer {
         handle?.let { return it }
@@ -42,8 +43,16 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         val lib = Native.load(name, Mpv::class.java)
         val ctx = checkNotNull(lib.mpv_create())
         try {
-            val options = mapOf("video" to "no", "terminal" to "no", "ytdl" to "no", "load-scripts" to "no",
-                "config" to "no", "cache-secs" to "8", "demuxer-max-bytes" to "4MiB")
+            val options = mapOf(
+                "video" to "no",
+                "terminal" to "no",
+                "ytdl" to "no",
+                "load-scripts" to "no",
+                "config" to "no",
+                "cache-secs" to "20",
+                "demuxer-max-bytes" to "16MiB",
+                "audio-pitch-correction" to "yes",
+            )
             options.forEach { (key, value) -> check(lib.mpv_set_option_string(ctx, key, value) >= 0) }
             audioOutput?.let { check(lib.mpv_set_option_string(ctx, "ao", it) >= 0) }
             check(lib.mpv_initialize(ctx) >= 0)
@@ -69,6 +78,7 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                 lastStream = stream
                 ended = false
                 command("loadfile", stream.url, "replace")
+                applySoundProfile(activeProfile)
                 command("set", "pause", "no")
                 state.value = Transport(track, playing = true, duration = track.durationSeconds ?: 0)
                 polling = launch {
@@ -81,9 +91,9 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                     }
                 }
             } catch (e: LinkageError) {
-                state.value = Transport(track, error = "libmpv is unavailable. Check the native audio library and retry.")
+                state.value = Transport(track, error = "libmpv no está disponible. Verificá la biblioteca de audio nativa y reintentá.")
             } catch (e: Exception) {
-                state.value = Transport(track, error = "Could not initialize libmpv or open this stream.")
+                state.value = Transport(track, error = "No se pudo inicializar libmpv o abrir esta pista.")
             }
         }
     }
@@ -102,12 +112,36 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                     val reason = event.getPointer(16)?.getInt(0)
                     if (reason == 0 || reason == 4) {
                         ended = true
-                        state.value = state.value.copy(playing = false,
-                            error = if (reason == 4) "Stream ended with an error. Retry for a fresh URL." else null)
+                        state.value = state.value.copy(playing = false, ended = reason == 0,
+                            error = if (reason == 4) "La reproducción terminó con un error. Reintentá para obtener un enlace nuevo." else null)
                     }
                 }
             }
         }
+    }
+
+    override fun volume(value: Float) { setNumber("volume", value * 100) }
+    override fun speed(value: Float) { setNumber("speed", value) }
+
+    override fun soundProfile(profile: SoundProfile) {
+        activeProfile = profile
+        scope.launch {
+            if (handle != null) applySoundProfile(profile)
+        }
+    }
+
+    private fun applySoundProfile(profile: SoundProfile) {
+        val filter = when (profile) {
+            SoundProfile.Flat -> ""
+            SoundProfile.AnimeOST -> "lavfi=[equalizer=f=250:t=q:w=1:g=2,equalizer=f=3200:t=q:w=1.2:g=3.5,equalizer=f=11000:t=q:w=1.5:g=2.5]"
+            SoundProfile.HiFi -> "lavfi=[equalizer=f=90:t=q:w=1:g=2,equalizer=f=10000:t=q:w=1.2:g=3.5]"
+            SoundProfile.BassBoost -> "lavfi=[equalizer=f=65:t=q:w=1:g=5,equalizer=f=150:t=q:w=1.2:g=3]"
+        }
+        runCatching { command("set", "af", filter) }
+    }
+
+    private fun setNumber(property: String, value: Float) {
+        scope.launch { if (handle != null) runCatching { command("set", property, value.toString()) } }
     }
 
     override fun toggle() {

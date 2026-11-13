@@ -2,7 +2,7 @@
 package io.github.jadenyuki4.orbitmusic
 
 import android.os.Bundle
-import kotlinx.coroutines.*
+
 import android.animation.ValueAnimator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,21 +12,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
-import io.github.jadenyuki4.orbitmusic.data.NewPipeMusicSource
-import io.github.jadenyuki4.orbitmusic.data.createAndroidHistoryStore
+
 
 class MainActivity : ComponentActivity() {
-    private val musicSource by lazy { NewPipeMusicSource() }
-    private val historyStore by lazy { createAndroidHistoryStore(this) }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val engine by lazy { AndroidEngine(this, scope) }
-    private val playback by lazy { Playback(musicSource, engine, scope) }
-
-    override fun onDestroy() {
-        engine.close()
-        scope.cancel()
-        super.onDestroy()
-    }
+    private val orbit get() = application as OrbitApplication
     private var systemReduceMotion by mutableStateOf(!ValueAnimator.areAnimatorsEnabled())
 
     override fun onResume() {
@@ -41,9 +30,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 systemReduceMotion = systemReduceMotion,
-                source = musicSource,
-                history = historyStore,
-                playback = playback,
+                source = orbit.source,
+                history = orbit.history,
+                playback = orbit.playback,
             )
         }
     }

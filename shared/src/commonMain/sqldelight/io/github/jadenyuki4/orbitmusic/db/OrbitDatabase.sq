@@ -1,5 +1,16 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 
+CREATE TABLE playlist_document (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+    document TEXT NOT NULL
+);
+
+savePlaylistDocument:
+INSERT OR REPLACE INTO playlist_document VALUES (1, ?);
+
+playlistDocument:
+SELECT document FROM playlist_document WHERE id = 1;
+
 CREATE TABLE search_history (
     query TEXT NOT NULL,
     kind TEXT NOT NULL,
@@ -109,3 +120,51 @@ SELECT EXISTS(SELECT 1 FROM favorite WHERE song_id = :songId);
 
 clearFavorites:
 DELETE FROM favorite;
+
+CREATE TABLE downloaded_track (
+    song_id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    artwork_url TEXT,
+    artwork_local_path TEXT,
+    duration_seconds INTEGER,
+    local_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    format_label TEXT,
+    bitrate_kbps INTEGER,
+    file_size_bytes INTEGER NOT NULL,
+    downloaded_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_downloaded_track_downloaded_at ON downloaded_track(downloaded_at DESC);
+
+upsertDownload:
+INSERT OR REPLACE INTO downloaded_track(
+    song_id, title, subtitle, artwork_url, artwork_local_path, duration_seconds,
+    local_path, mime_type, format_label, bitrate_kbps, file_size_bytes, downloaded_at
+) VALUES (
+    :songId, :title, :subtitle, :artworkUrl, :artworkLocalPath, :durationSeconds,
+    :localPath, :mimeType, :formatLabel, :bitrateKbps, :fileSizeBytes, :downloadedAt
+);
+
+getDownload:
+SELECT song_id, title, subtitle, artwork_url, artwork_local_path, duration_seconds,
+       local_path, mime_type, format_label, bitrate_kbps, file_size_bytes, downloaded_at
+FROM downloaded_track
+WHERE song_id = :songId;
+
+allDownloads:
+SELECT song_id, title, subtitle, artwork_url, artwork_local_path, duration_seconds,
+       local_path, mime_type, format_label, bitrate_kbps, file_size_bytes, downloaded_at
+FROM downloaded_track
+ORDER BY downloaded_at DESC;
+
+isDownloaded:
+SELECT EXISTS(SELECT 1 FROM downloaded_track WHERE song_id = :songId);
+
+deleteDownload:
+DELETE FROM downloaded_track
+WHERE song_id = :songId;
+
+clearDownloads:
+DELETE FROM downloaded_track;

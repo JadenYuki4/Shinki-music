@@ -11,6 +11,10 @@ class LiveSourceSmokeTest {
     @Test fun suggestionsAndMusicCategories() = runBlocking {
         assumeTrue(System.getProperty("orbit.live") == "true")
         val source = NewPipeMusicSource()
+        val trend = source.discover(null, 8)
+        assertTrue(assertIs<SourceResult.Success<MusicPage>>(trend).value.items.isNotEmpty())
+        val lyrics = source.lyrics(MusicItem("unused", "Yellow", "Coldplay", MusicKind.Song))
+        assertFalse(assertIs<SourceResult.Success<String?>>(lyrics).value.isNullOrBlank())
         val suggestions = source.suggestions("Daft Punk")
         assertIs<SourceResult.Success<List<String>>>(suggestions)
         assertTrue(suggestions.value.isNotEmpty())

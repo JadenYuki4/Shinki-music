@@ -27,8 +27,14 @@ data class Palette(
 )
 
 enum class ThemePreset(val label: String) {
-    NeonCyan("Neon Cyan"), VioletVoid("Violet Void"), SolarGold("Solar Gold"),
-    CrimsonCore("Crimson Core"), MonochromeLight("Monochrome Light"), Custom("Custom")
+    SakuraShrine("Oscuro Expresivo"),
+    MoonlitTorii("Cristal Turquesa"),
+    NeonCyan("Verde Neón (#1DB954)"),
+    VioletVoid("Vacío Violeta"),
+    SolarGold("Oro Solar"),
+    CrimsonCore("Núcleo Carmesí"),
+    MonochromeLight("Claro Monocromo"),
+    Custom("Personalizado")
 }
 enum class BackgroundStyle { Solid, Gradient, AlbumArt }
 enum class FontStyle { Geometric, Monospace, System }
@@ -36,13 +42,13 @@ enum class Density(val scale: Float) { Compact(.85f), Comfortable(1f), Spacious(
 
 @Immutable
 data class ThemeSettings(
-    val preset: ThemePreset = ThemePreset.NeonCyan,
+    val preset: ThemePreset = ThemePreset.VioletVoid,
     val customPalette: Palette = Palette(),
     val background: BackgroundStyle = BackgroundStyle.Gradient,
     val font: FontStyle = FontStyle.Geometric,
     val density: Density = Density.Comfortable,
-    val roundness: Float = 20f,
-    val glow: Float = .25f,
+    val roundness: Float = 24f,
+    val glow: Float = .35f,
     val blur: Float = 0f,
     val animationIntensity: Float = .5f,
     val animationSpeed: Float = 1f,
@@ -52,7 +58,39 @@ data class ThemeSettings(
 )
 
 fun paletteFor(preset: ThemePreset, custom: Palette = Palette()): Palette = when (preset) {
-    ThemePreset.NeonCyan -> Palette()
+    ThemePreset.SakuraShrine -> Palette(
+        background = Color(0xFF111216),
+        surface = Color(0xFF191B21),
+        elevated = Color(0xFF232630),
+        primary = Color(0xFFB5C7FF),
+        secondary = Color(0xFF5CE1E6),
+        highlight = Color(0xFFE7B8EE),
+        text = Color(0xFFF3F5FA),
+        muted = Color(0xFFA0A8BA),
+        onAccent = Color(0xFF111216),
+    )
+    ThemePreset.MoonlitTorii -> Palette(
+        background = Color(0xFF0C1214),
+        surface = Color(0xFF131C1F),
+        elevated = Color(0xFF1C292D),
+        primary = Color(0xFF7CE8EB),
+        secondary = Color(0xFFB5C7FF),
+        highlight = Color(0xFF1DB954),
+        text = Color(0xFFEEF7F8),
+        muted = Color(0xFF97AEB2),
+        onAccent = Color(0xFF0C1214),
+    )
+    ThemePreset.NeonCyan -> Palette(
+        background = Color(0xFF0E1311),
+        surface = Color(0xFF151D19),
+        elevated = Color(0xFF1E2924),
+        primary = Color(0xFF4ADE80),
+        secondary = Color(0xFF5CE1E6),
+        highlight = Color(0xFFB5C7FF),
+        text = Color(0xFFF0FDF4),
+        muted = Color(0xFF98B3A4),
+        onAccent = Color(0xFF0E1311),
+    )
     ThemePreset.VioletVoid -> Palette(background = Color(0xFF100B1F), surface = Color(0xFF1A122C),
         elevated = Color(0xFF281E40), primary = Color(0xFFC4A7FF), secondary = Color(0xFF00E5FF))
     ThemePreset.SolarGold -> Palette(background = Color(0xFF151109), surface = Color(0xFF211B10),
@@ -110,14 +148,14 @@ class LayoutTokens(density: Density, roundness: Float) {
     val sidebar = 224.dp
     val wideBreakpoint = 840.dp
     val panesBreakpoint = 1100.dp
-    val detailPane = 256.dp
+    val detailPane = 272.dp
     val contentMax = 1120.dp
     val artwork = 176.dp
     val swatch = 32.dp
     val windowWidth = 1180.dp
     val windowHeight = 820.dp
-    val outlineAlpha = .25f
-    val glowAlpha = .08f
+    val outlineAlpha = .28f
+    val glowAlpha = .12f
     val minRoundness = 0f
     val maxRoundness = 32f
 }

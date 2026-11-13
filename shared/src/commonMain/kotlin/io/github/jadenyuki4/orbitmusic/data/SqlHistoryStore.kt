@@ -25,6 +25,12 @@ class SqlHistoryStore(
     private val maxSearchEntries: Long = 200L,
     private val maxPlayEntries: Long = 1000L,
 ) : HistoryStore {
+    // Store the collection in SQLite. Desktop Preferences limits an individual value to 8192 characters.
+    override val playlists by lazy {
+        io.github.jadenyuki4.orbitmusic.Playlists(
+            save = { queries.savePlaylistDocument(it) },
+            read = { queries.playlistDocument().executeAsOneOrNull() })
+    }
     private val database = OrbitDatabase(driver)
     private val queries = database.orbitDatabaseQueries
 
@@ -170,6 +176,80 @@ class SqlHistoryStore(
         }
     }
 
+    override fun observeDownloads(): Flow<List<DownloadedTrack>> =
+        queries.allDownloads(::mapDownloadRow).asFlow().mapToList(ioDispatcher)
+
+    override fun observeIsDownloaded(songId: String): Flow<Boolean> =
+        queries.isDownloaded(songId).asFlow().mapToOne(ioDispatcher)
+
+    override suspend fun getDownload(songId: String): DownloadedTrack? = withContext(ioDispatcher) {
+        queries.getDownload(songId, ::mapDownloadRow).executeAsOneOrNull()
+    }
+
+    override suspend fun saveDownload(track: DownloadedTrack) {
+        if (track.item.id.isBlank() || track.localPath.isBlank()) return
+        val now = if (track.downloadedAtEpochMillis > 0L) track.downloadedAtEpochMillis else clockMillis()
+        withContext(ioDispatcher) {
+            queries.upsertDownload(
+                songId = track.item.id,
+                title = track.item.title,
+                subtitle = track.item.subtitle,
+                artworkUrl = track.item.artworkUrl,
+                artworkLocalPath = track.artworkLocalPath,
+                durationSeconds = track.item.durationSeconds,
+                localPath = track.localPath,
+                mimeType = track.mimeType,
+                formatLabel = track.formatLabel,
+                bitrateKbps = track.bitrateKbps?.toLong(),
+                fileSizeBytes = track.fileSizeBytes,
+                downloadedAt = now,
+            )
+        }
+    }
+
+    override suspend fun removeDownload(songId: String) {
+        withContext(ioDispatcher) {
+            queries.deleteDownload(songId)
+        }
+    }
+
+    override suspend fun clearDownloads() {
+        withContext(ioDispatcher) {
+            queries.clearDownloads()
+        }
+    }
+
+    private fun mapDownloadRow(
+        songId: String,
+        title: String,
+        subtitle: String,
+        artworkUrl: String?,
+        artworkLocalPath: String?,
+        durationSeconds: Long?,
+        localPath: String,
+        mimeType: String,
+        formatLabel: String?,
+        bitrateKbps: Long?,
+        fileSizeBytes: Long,
+        downloadedAt: Long,
+    ): DownloadedTrack = DownloadedTrack(
+        item = MusicItem(
+            id = songId,
+            title = title,
+            subtitle = subtitle,
+            kind = MusicKind.Song,
+            artworkUrl = artworkUrl,
+            durationSeconds = durationSeconds,
+        ),
+        localPath = localPath,
+        mimeType = mimeType,
+        formatLabel = formatLabel,
+        bitrateKbps = bitrateKbps?.toInt(),
+        fileSizeBytes = fileSizeBytes,
+        artworkLocalPath = artworkLocalPath,
+        downloadedAtEpochMillis = downloadedAt,
+    )
+
     private fun parseKind(raw: String): MusicKind =
         MusicKind.entries.firstOrNull { it.name == raw } ?: MusicKind.Song
 
@@ -180,10 +260,12 @@ class SqlHistoryStore(
 
 /** In-memory no-op store for IDE previews and tests that do not supply a database driver. */
 class InMemoryHistoryStore : HistoryStore {
+    override val playlists = io.github.jadenyuki4.orbitmusic.Playlists()
     private val incognitoState = MutableStateFlow(false)
     private val searches = MutableStateFlow<List<SearchHistoryEntry>>(emptyList())
     private val plays = MutableStateFlow<List<PlayEventRecord>>(emptyList())
     private val favorites = MutableStateFlow<List<MusicItem>>(emptyList())
+    private val downloads = MutableStateFlow<List<DownloadedTrack>>(emptyList())
     private var clock = 1L
 
     override val incognito: StateFlow<Boolean> = incognitoState.asStateFlow()
@@ -261,5 +343,29 @@ class InMemoryHistoryStore : HistoryStore {
 
     override suspend fun clearFavorites() {
         favorites.value = emptyList()
+    }
+
+    override fun observeDownloads(): Flow<List<DownloadedTrack>> = downloads.asStateFlow()
+
+    override fun observeIsDownloaded(songId: String): Flow<Boolean> =
+        downloads.map { list -> list.any { it.item.id == songId } }
+
+    override suspend fun getDownload(songId: String): DownloadedTrack? =
+        downloads.value.firstOrNull { it.item.id == songId }
+
+    override suspend fun saveDownload(track: DownloadedTrack) {
+        val timestamp = if (track.downloadedAtEpochMillis > 0L) track.downloadedAtEpochMillis else clock++
+        val saved = track.copy(downloadedAtEpochMillis = timestamp)
+        downloads.update { current ->
+            listOf(saved) + current.filterNot { it.item.id == track.item.id }
+        }
+    }
+
+    override suspend fun removeDownload(songId: String) {
+        downloads.update { current -> current.filterNot { it.item.id == songId } }
+    }
+
+    override suspend fun clearDownloads() {
+        downloads.value = emptyList()
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.search
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,72 +15,174 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.jadenyuki4.orbitmusic.*
 import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.theme.*
 
 @Composable
-fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
+fun SearchScreen(
+    model: SearchViewModel,
+    enqueue: (MusicItem) -> Unit,
+    playNext: (MusicItem) -> Unit = enqueue,
+    playback: Playback? = null,
+    play: (MusicItem) -> Unit,
+) {
     val controller = model.controller
     val state by controller.state.collectAsStateWithLifecycle()
+    val plays by remember(controller) { controller.historyStore.observeRecentPlays(20) }.collectAsState(emptyList())
+    val favorites by remember(controller) { controller.historyStore.observeFavorites() }.collectAsState(emptyList())
     val p = LocalPalette.current
     val t = LocalLayout.current
     val focus = remember { FocusRequester() }
     val list = rememberLazyListState()
     LaunchedEffect(Unit) { focus.requestFocus() }
-    LaunchedEffect(state.query, state.kind) { list.scrollToItem(0) }
+    LaunchedEffect(state.query, state.kind, state.repository) { list.scrollToItem(0) }
+
+    var contextualPicks by remember(state.submitted, state.query, state.items.size) {
+        mutableStateOf<List<Pick>>(emptyList())
+    }
+    LaunchedEffect(state.submitted, state.query, state.items.size) {
+        if (state.submitted && state.query.isNotBlank() && !state.incognito) {
+            val res = searchContextualRecommendations(
+                source = controller.source,
+                query = state.query,
+                currentItems = state.items,
+                searches = state.history,
+                plays = plays,
+                favorites = favorites,
+            )
+            if (res is SourceResult.Success) {
+                contextualPicks = res.value
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(t.medium), verticalArrangement = Arrangement.spacedBy(t.unit)) {
-        Text("Search", style = MaterialTheme.typography.headlineMedium)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SpotiFlacBrandBadge(size = 26.dp)
+                Text("${SpotiFlacAppInfo.APP_NAME} · Búsqueda y Fuentes", style = MaterialTheme.typography.headlineMedium)
+            }
+            SpotiFlacQualityBadge(
+                text = "✦ ${state.repository.shortLabel} · Audio 24-bit",
+                highlighted = true,
+            )
+        }
+
+        // Always-visible Timing & Player Transport Bar while searching!
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = p.surface,
+            border = BorderStroke(1.dp, p.primary.copy(alpha = 0.28f)),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 6.dp)) {
+                TimingTransportBar(playback = playback, compact = false)
+            }
+        }
+
         OutlinedTextField(
             value = state.query,
             onValueChange = controller::changeQuery,
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
             singleLine = true,
-            label = { Text("Search YouTube Music") },
+            shape = RoundedCornerShape(percent = 50),
+            label = { Text("Buscá en Shinki music, YT Music, SoundCloud, Bandcamp o pegá un enlace…") },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { controller.submit() }),
             trailingIcon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(end = 6.dp),
+                ) {
                     if (state.query.isNotEmpty()) {
                         TextButton(
                             onClick = { controller.changeQuery("") },
-                            modifier = Modifier.semantics { contentDescription = "Clear search query" },
-                        ) { Text("Clear") }
+                            modifier = Modifier.semantics { contentDescription = "Limpiar búsqueda" },
+                        ) { Text("Limpiar") }
                     }
-                    TextButton(
-                        onClick = controller::submit,
-                        enabled = state.query.isNotBlank() && !state.loading,
-                    ) { Text("Search") }
+                    VividPillButton(
+                        text = "⌕ Buscar",
+                        active = state.query.isNotBlank() && !state.loading,
+                        accentColor = p.primary,
+                        onClick = { if (state.query.isNotBlank() && !state.loading) controller.submit() },
+                    )
                 }
             },
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
-            items(MusicKind.entries, key = { it.name }) { kind ->
-                FilterChip(
-                    selected = state.kind == kind,
-                    onClick = { controller.selectKind(kind) },
-                    label = { Text(kind.pluralLabel()) },
+
+        // Multi-Repository & SpotiFLAC Service Selector Row
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(t.unit),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            item("repo-label") {
+                Text("Fuentes:", style = MaterialTheme.typography.labelSmall, color = p.primary)
+            }
+            items(MusicRepository.entries, key = { "repo:${it.name}" }) { repo ->
+                VividPillButton(
+                    text = repo.shortLabel,
+                    active = state.repository == repo,
+                    accentColor = p.primary,
+                    onClick = { controller.selectRepository(repo) },
+                )
+            }
+            items(SpotiFlacServiceInfo.entries.take(4), key = { "svc:${it.id}" }) { svc ->
+                SpotiFlacQualityBadge(
+                    text = "● ${svc.label}",
+                    modifier = Modifier.clickable { controller.selectRepository(svc.linkedRepo) },
                 )
             }
         }
+
+        // Category + Quick Tags Row
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
+            items(MusicKind.entries, key = { it.name }) { kind ->
+                VividPillButton(
+                    text = kind.pluralLabel(),
+                    active = state.kind == kind,
+                    accentColor = p.primary,
+                    onClick = { controller.selectKind(kind) },
+                )
+            }
+            val quickTags = listOf("Anime Openings", "Sakura Lo-Fi", "J-Pop", "Vocaloid", "Synthwave", "Bandas Sonoras")
+            items(quickTags, key = { "tag:$it" }) { tag ->
+                VividPillButton(
+                    text = "✦ $tag",
+                    accentColor = p.highlight,
+                    onClick = { controller.chooseSuggestion(tag) },
+                )
+            }
+        }
+
         // Exactly one lazy scroll surface; at most 300 result rows are retained by the state owner.
         LazyColumn(Modifier.weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(t.unit)) {
-            if (!state.submitted && state.query.isBlank() && state.history.isNotEmpty()) {
+            if (!state.incognito && !state.submitted && state.query.isBlank() && state.history.isNotEmpty()) {
                 item("history-header") {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("Recent searches", style = MaterialTheme.typography.titleMedium, color = p.primary)
+                        Text("Búsquedas recientes", style = MaterialTheme.typography.titleMedium, color = p.primary)
                         TextButton(
                             onClick = controller::clearHistory,
-                            modifier = Modifier.semantics { contentDescription = "Clear search history" },
-                        ) { Text("Clear history") }
+                            modifier = Modifier.semantics { contentDescription = "Borrar historial de búsqueda" },
+                        ) { Text("Borrar historial") }
                     }
                 }
                 items(
@@ -87,10 +190,14 @@ fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
                     key = { "history:${it.kind.name}:${it.query}" },
                     contentType = { "search-history" },
                 ) { entry ->
-                    Surface(color = p.surface, shape = RoundedCornerShape(t.radius)) {
+                    Surface(
+                        color = p.surface,
+                        shape = AestheticPetalShape,
+                        border = BorderStroke(t.hairline, p.primary.copy(alpha = 0.25f)),
+                    ) {
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable(onClickLabel = "Search again") { controller.chooseHistory(entry) }
+                                .clickable(onClickLabel = "Buscar de nuevo") { controller.chooseHistory(entry) }
                                 .padding(horizontal = t.small, vertical = t.unit),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(t.small),
@@ -112,16 +219,16 @@ fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
                             TextButton(
                                 onClick = { controller.removeHistory(entry) },
                                 modifier = Modifier.semantics {
-                                    contentDescription = "Remove ${entry.query} from history"
+                                    contentDescription = "Quitar ${entry.query} del historial"
                                 },
-                            ) { Text("Remove") }
+                            ) { Text("Quitar") }
                         }
                     }
                 }
             }
             items(state.suggestions, key = { "suggestion:$it" }) { suggestion ->
                 TextButton(onClick = { controller.chooseSuggestion(suggestion) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(suggestion, Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("⌕  $suggestion", Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             state.suggestionError?.let { error ->
@@ -132,43 +239,118 @@ fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
             if (!state.submitted && state.suggestions.isEmpty() && state.suggestionError == null && state.history.isEmpty()) {
                 item("hint") {
                     Text(
-                        "Find a song, album, artist or playlist. Suggestions appear as you type.",
+                        "Buscá cualquier canción, opening, remix o álbum. El buscador consulta múltiples repositorios (YT Music, YouTube Completo, SoundCloud y Bandcamp) para encontrar todos los temas.",
                         color = p.muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
+
+            // Contextual recommendations based on the user's current search!
+            if (contextualPicks.isNotEmpty() && state.submitted) {
+                item("contextual-recommendations") {
+                    Surface(
+                        color = p.elevated,
+                        shape = AestheticGemShape,
+                        border = BorderStroke(1.2.dp, Brush.horizontalGradient(listOf(p.primary, p.secondary))),
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(t.small), verticalArrangement = Arrangement.spacedBy(t.unit)) {
+                            Text(
+                                "✦ Recomendado en base a tu búsqueda «${state.query.trim()}»",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = p.primary,
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
+                                items(contextualPicks, key = { "ctx:${it.item.id}" }) { pick ->
+                                    Surface(
+                                        color = p.surface,
+                                        shape = AestheticPetalShape,
+                                        border = BorderStroke(t.hairline, p.secondary.copy(alpha = 0.45f)),
+                                    ) {
+                                        Row(
+                                            Modifier.width(248.dp)
+                                                .clickable { play(pick.item) }
+                                                .padding(t.unit),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(t.unit),
+                                        ) {
+                                            TrackArt(pick.item, Modifier.size(44.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text(pick.item.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+                                                Text(pick.item.subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = p.muted)
+                                                Text("Afinidad: ${pick.reason}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = p.secondary)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             items(state.items, key = { it.id }, contentType = { "music-result" }) { item ->
-                Surface(color = p.surface, shape = RoundedCornerShape(t.radius)) {
+                Surface(
+                    color = p.surface,
+                    shape = AestheticGemShape,
+                    border = BorderStroke(t.hairline, p.primary.copy(alpha = 0.25f)),
+                ) {
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable(enabled = item.kind == MusicKind.Song, onClickLabel = "Play song") { play(item) }
+                            .clickable(enabled = item.kind == MusicKind.Song, onClickLabel = "Reproducir canción") { play(item) }
                             .padding(t.small),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(t.small),
                     ) {
-                        // Artwork requests are deferred until the bounded image cache in d.
+                        if (item.artworkUrl != null) TrackArt(item, Modifier.size(t.touch)) else
                         Box(
                             Modifier.size(t.touch)
-                                .background(p.elevated, RoundedCornerShape(t.unit))
+                                .background(p.elevated, AestheticGemShape)
                                 .semantics { contentDescription = item.kind.name },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(if (item.kind == MusicKind.Song) "♪" else "◈", color = p.primary)
                         }
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                item.title,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
-                            )
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                SpotiFlacQualityBadge(
+                                    text = "24-bit · ${item.repositoryBadge}",
+                                    highlighted = true,
+                                )
+                                Text(
+                                    item.title,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                            }
                             Text(
                                 item.subtitle,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 color = p.muted,
                                 style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        if (item.kind == MusicKind.Song) {
+                            VividPillButton(
+                                text = "▶ Reproducir",
+                                active = true,
+                                accentColor = p.primary,
+                                onClick = { play(item) },
+                            )
+                            VividPillButton(
+                                text = "+ Cola",
+                                accentColor = p.secondary,
+                                onClick = { enqueue(item) },
+                            )
+                            TrackDownloadButton(
+                                playback = playback,
+                                item = item,
+                                compact = true,
                             )
                         }
                         item.durationSeconds?.let { duration ->
@@ -183,20 +365,20 @@ fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
             }
             state.error?.let { error -> item("search-error") { ErrorNotice(error, controller::retry) } }
             if (state.loading) item("loading") {
-                LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = "Searching" })
+                LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = "Buscando" })
             }
             if (state.submitted && !state.loading && state.error == null && state.items.isEmpty()) item("empty") {
-                Text("No results. Try another search or category.", color = p.muted)
+                Text("Sin resultados. Probá otra búsqueda o categoría.", color = p.muted)
             }
             if (state.nextPage != null && !state.loading && state.error == null) item("more") {
-                OutlinedButton(onClick = controller::loadMore, modifier = Modifier.fillMaxWidth()) { Text("Load more") }
+                OutlinedButton(onClick = controller::loadMore, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
             }
             if (state.reachedLimit) item("limit") {
-                Text("Showing up to 300 results. Refine your search to find more.", color = p.muted)
+                Text("Mostrando hasta 300 resultados. Refiná tu búsqueda para ver más.", color = p.muted)
             }
             if (state.items.any { it.kind == MusicKind.Song }) item("playback-note") {
                 Text(
-                    "Select a song to play it.",
+                    "Seleccioná una canción para reproducirla o descargarla offline.",
                     color = p.muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -206,10 +388,10 @@ fun SearchScreen(model: SearchViewModel, play: (MusicItem) -> Unit) {
 }
 
 private fun MusicKind.pluralLabel(): String = when (this) {
-    MusicKind.Song -> "Songs"
-    MusicKind.Album -> "Albums"
-    MusicKind.Artist -> "Artists"
-    MusicKind.Playlist -> "Playlists"
+    MusicKind.Song -> "Canciones"
+    MusicKind.Album -> "Álbumes"
+    MusicKind.Artist -> "Artistas"
+    MusicKind.Playlist -> "Listas"
 }
 
 @Composable
@@ -218,6 +400,6 @@ private fun ErrorNotice(error: SourceError, retry: () -> Unit) {
     val t = LocalLayout.current
     Column(verticalArrangement = Arrangement.spacedBy(t.unit)) {
         Text(error.userMessage(), color = p.error, style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = retry) { Text(if (error == SourceError.InvalidRequest) "Search again" else "Retry") }
+        OutlinedButton(onClick = retry) { Text(if (error == SourceError.InvalidRequest) "Buscar de nuevo" else "Reintentar") }
     }
 }

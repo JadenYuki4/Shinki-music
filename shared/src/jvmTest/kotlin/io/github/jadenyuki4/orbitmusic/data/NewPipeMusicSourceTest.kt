@@ -13,6 +13,7 @@ import kotlin.test.*
 
 class NewPipeMusicSourceTest {
     private class Gateway : ExtractorGateway {
+        override fun trending() = items
         var queries = mutableListOf<String>()
         var pages = mutableListOf<Page?>()
         override fun stream(songId: String) = AudioStream("https://example.com/audio", "audio/webm")
@@ -119,8 +120,23 @@ class NewPipeMusicSourceTest {
 
     @Test fun unsupportedFeaturesStayExplicit() = runTest {
         val source = NewPipeMusicSource(Gateway())
-        assertEquals(SourceResult.Failure(SourceError.Unsupported), source.discover(null, 30))
+        assertIs<SourceResult.Success<MusicPage>>(source.discover(null, 30))
         assertEquals(SourceResult.Failure(SourceError.InvalidRequest), source.stream("id"))
         assertIs<SourceResult.Success<AudioStream>>(source.stream("https://www.youtube.com/watch?v=example"))
+    }
+
+    @Test fun multiRepositoryBadgesAndInterleavingWork() {
+        val sc = MusicItem("https://soundcloud.com/artist/track", "SC Track", "Producer", MusicKind.Song)
+        val bc = MusicItem("https://artist.bandcamp.com/track/song", "BC Track", "Indie", MusicKind.Song)
+        val ytm = MusicItem("https://www.youtube.com/watch?v=1", "Official", "Artist - Topic", MusicKind.Song)
+        val yt = MusicItem("https://www.youtube.com/watch?v=2", "Anime OP", "Channel", MusicKind.Song)
+        assertEquals("SOUNDCLOUD", sc.repositoryBadge)
+        assertEquals("BANDCAMP", bc.repositoryBadge)
+        assertEquals("YT MUSIC", ytm.repositoryBadge)
+        assertEquals("YOUTUBE", yt.repositoryBadge)
+        assertEquals(
+            listOf("a1", "b1", "c1", "a2", "b2"),
+            interleaveLists(listOf(listOf("a1", "a2"), listOf("b1", "b2"), listOf("c1"))),
+        )
     }
 }

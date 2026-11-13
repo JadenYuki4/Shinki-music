@@ -8,6 +8,8 @@ Theme edits are session-only. Full custom token editing, theme JSON, art-derived
 
 ## Project documentation
 
+- [Queue controls, discovery algorithm, playlists and validation](docs/PHASE_D.md)
+
 - [Plan, architecture, folder structure and phase gates](docs/ARCHITECTURE.md)
 - [Every direct dependency: versions, exact Gradle lines and size rationale](docs/DEPENDENCIES.md)
 - [Phase (b): data architecture, added dependencies and test instructions](docs/PHASE_B.md)
@@ -72,4 +74,4 @@ This project is intended for personal and educational use. Third-party YouTube M
 
 Licensed under **GPL-3.0-or-later**, as chosen by the project owner. The intended-use statement does not restrict the rights granted by the GPL. Third-party components retain their licenses; see the Phase (b) dependency/license notes for the extractor.
 
-Phase (d) covers library, queue features and the remaining main screens.
+Open a track from the bottom player for shuffle, repeat, speed, volume, sleep timer, lyrics and recommendation autoplay. Home adapts to recent searches, listens and favorites. Library manages playlists, JSON exchange, incognito and history removal.

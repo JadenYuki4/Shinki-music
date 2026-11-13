@@ -9,6 +9,8 @@ import androidx.lifecycle.ViewModel
 sealed interface ThemeAction {
     data class SelectPreset(val preset: ThemePreset) : ThemeAction
     data class SetRoundness(val value: Float) : ThemeAction
+    data class SetGlow(val value: Float) : ThemeAction
+    data class SetAnimationIntensity(val value: Float) : ThemeAction
     data class SetLowPower(val enabled: Boolean) : ThemeAction
     data class SetReduceMotion(val enabled: Boolean) : ThemeAction
 }
@@ -18,6 +20,10 @@ fun reduceTheme(state: ThemeSettings, action: ThemeAction): ThemeSettings = when
     is ThemeAction.SelectPreset -> state.copy(preset = action.preset)
     is ThemeAction.SetRoundness -> state.copy(roundness =
         if (action.value.isFinite()) action.value.coerceIn(0f, 32f) else state.roundness)
+    is ThemeAction.SetGlow -> state.copy(glow =
+        if (action.value.isFinite()) action.value.coerceIn(0f, 1f) else state.glow)
+    is ThemeAction.SetAnimationIntensity -> state.copy(animationIntensity =
+        if (action.value.isFinite()) action.value.coerceIn(0f, 1f) else state.animationIntensity)
     is ThemeAction.SetLowPower -> state.copy(lowPower = action.enabled)
     is ThemeAction.SetReduceMotion -> state.copy(reduceMotion = action.enabled)
 }

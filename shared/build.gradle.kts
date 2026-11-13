@@ -36,6 +36,7 @@ kotlin {
         val jvmAndAndroidMain by creating {
             dependsOn(commonMain.get())
             dependencies {
+                implementation("com.github.TeamNewPipe:nanojson:e9d656ddb49a412a5a0a5d5ef20ca7ef09549996")
                 implementation("com.github.teamnewpipe:NewPipeExtractor:${libs.versions.newpipe.get()}") {
                     // NewPipe uses Rhino directly; the optional JSR-223 engine targets javax.script,
                     // which is absent on Android. No extractor source references that adapter.

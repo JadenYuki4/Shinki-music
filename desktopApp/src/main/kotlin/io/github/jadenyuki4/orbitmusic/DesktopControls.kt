@@ -2,7 +2,7 @@
 package io.github.jadenyuki4.orbitmusic
 
 import com.sun.jna.*
-import com.sun.jna.win32.StdCallLibrary
+
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -10,33 +10,46 @@ import kotlinx.coroutines.flow.first
 import kotlin.coroutines.resume
 import java.io.File
 
-private interface Hotkeys : StdCallLibrary {
-    fun RegisterHotKey(window: Pointer?, id: Int, modifiers: Int, key: Int): Boolean
-    fun UnregisterHotKey(window: Pointer?, id: Int): Boolean
-    fun GetMessageW(msg: Pointer, window: Pointer?, min: Int, max: Int): Int
-    fun PostThreadMessageW(thread: Int, message: Int, wParam: Pointer?, lParam: Pointer?): Boolean
-}
-
-private interface ThreadIds : StdCallLibrary {
-    fun GetCurrentThreadId(): Int
-}
-
 /** Windows owns the hotkey registration on one message-queue thread. Linux delegates MPRIS to GIO. */
-internal fun mediaKeys(engine: AudioEngine, scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
+internal fun mediaKeys(playback: Playback, scope: CoroutineScope): Job = scope.launch(Dispatchers.IO) {
+    val engine = playback.engine
     engine.state.first { it.track != null && it.error == null }
     if (com.sun.jna.Platform.isWindows()) {
-        suspendCancellableCoroutine<Unit> { continuation ->
-            val api = Native.load("user32", Hotkeys::class.java)
-            if (api.RegisterHotKey(null, 1, 0x4000, 0xB3)) try {
-                val thread = Native.load("kernel32", ThreadIds::class.java).GetCurrentThreadId()
-                continuation.invokeOnCancellation { api.PostThreadMessageW(thread, 0x12, null, null) }
-                Memory(64).use { msg ->
-                    while (continuation.isActive && api.GetMessageW(msg, null, 0x312, 0x312) > 0)
-                        engine.toggle()
+        val helper = listOfNotNull(System.getProperty("compose.application.resources.dir"),
+            "desktopApp/resources/windows-x64", "resources/windows-x64").map { File(it, "ShinkiTransport.exe") }.first { it.isFile }
+        val process = ProcessBuilder(helper.absolutePath).start()
+        try {
+            coroutineScope {
+                val writer = launch {
+                    fun encode(value: String) = java.util.Base64.getEncoder().encodeToString(value.toByteArray(Charsets.UTF_8))
+                    process.outputStream.bufferedWriter().use { output ->
+                        engine.state.map { state ->
+                            val status = if (state.playing) "Playing" else "Paused"
+                            listOf(status, encode(state.track?.title.orEmpty()), encode(state.track?.subtitle.orEmpty())).joinToString("\t")
+                        }.distinctUntilChanged().collect { output.write(it); output.newLine(); output.flush() }
+                    }
                 }
-            } finally { api.UnregisterHotKey(null, 1) }
-            if (continuation.isActive) continuation.resume(Unit)
-        }
+                try {
+                    suspendCancellableCoroutine<Unit> { continuation ->
+                        continuation.invokeOnCancellation { process.destroy() }
+                        process.inputStream.bufferedReader().useLines { lines -> lines.forEach { command ->
+                            scope.launch {
+                                when (command) {
+                                    "PlayPause" -> engine.toggle()
+                                    "Play" -> if (!engine.state.value.playing) engine.toggle()
+                                    "Pause" -> if (engine.state.value.playing) engine.toggle()
+                                    "Next" -> playback.next()
+                                    "Previous" -> playback.back()
+                                }
+                            }
+                        } }
+                        if (continuation.isActive) continuation.resume(Unit)
+                    }
+                } finally { writer.cancel() }
+            }
+        } catch (_: java.io.IOException) {
+            // Closing the native session can close the pipe before the last status write.
+        } finally { process.destroy() }
     } else if (com.sun.jna.Platform.isLinux()) {
         val script = listOfNotNull(System.getProperty("compose.application.resources.dir"),
             "desktopApp/resources/linux", "resources/linux").map { File(it, "media_keys.py") }.firstOrNull { it.isFile } ?: return@launch
@@ -54,6 +67,8 @@ internal fun mediaKeys(engine: AudioEngine, scope: CoroutineScope): Job = scope.
                         continuation.invokeOnCancellation { process.destroy() }
                         process.inputStream.bufferedReader().useLines { lines -> lines.forEach { method ->
                             when (method) {
+                                "Next" -> scope.launch { playback.next() }
+                                "Previous" -> scope.launch { playback.back() }
                                 "PlayPause" -> engine.toggle()
                                 "Play" -> if (!engine.state.value.playing) engine.toggle()
                                 "Pause" -> if (engine.state.value.playing) engine.toggle()
@@ -68,3 +83,4 @@ internal fun mediaKeys(engine: AudioEngine, scope: CoroutineScope): Job = scope.
         } finally { process.destroy() }
     }
 }
+

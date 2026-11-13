@@ -21,6 +21,7 @@ dependencies {
 }
 
 tasks.test {
+    systemProperty("orbit.mediaKeysQA", providers.gradleProperty("mediaKeysQA").getOrElse("false"))
     systemProperty("orbit.live", providers.gradleProperty("orbitLive").getOrElse("false"))
 }
 
@@ -31,9 +32,10 @@ compose.desktop {
         // Linux uses the distribution-provided libmpv ABI 2.
 
         nativeDistributions {
+            outputBaseDir.set(project.layout.buildDirectory.dir("shinki-music-dist"))
             targetFormats(TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "OrbitMusic"
-            packageVersion = "1.0.0"
+            packageName = "Shinki music"
+            packageVersion = "5.2.7"
             // Explicit UI/source/storage modules, verified with suggestModules; never bundle all JDK modules.
             modules(
                 "java.desktop",
@@ -48,3 +50,13 @@ compose.desktop {
         }
     }
 }
+
+if (System.getProperty("os.name").startsWith("Windows")) {
+    val buildTransport = tasks.register<Exec>("buildWindowsTransport") {
+        inputs.files("native/ShinkiTransport.cs", "../scripts/build-transport.ps1")
+        outputs.file("resources/windows-x64/ShinkiTransport.exe")
+        commandLine("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "../scripts/build-transport.ps1")
+    }
+    tasks.matching { it.name in setOf("prepareAppResources", "run", "test") }.configureEach { dependsOn(buildTransport) }
+}
+

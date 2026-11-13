@@ -9,19 +9,21 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.window.*
 import io.github.jadenyuki4.orbitmusic.data.NewPipeMusicSource
 import io.github.jadenyuki4.orbitmusic.data.createDesktopHistoryStore
+import io.github.jadenyuki4.orbitmusic.data.createDesktopTrackDownloader
 import io.github.jadenyuki4.orbitmusic.theme.*
 import java.awt.SystemTray
 
 fun main() = application {
     val source = remember { NewPipeMusicSource() }
     val history = remember { createDesktopHistoryStore() }
+    val downloader = remember { createDesktopTrackDownloader() }
     val engine = remember { MpvEngine() }
     val scope = rememberCoroutineScope()
-    val playback = remember { Playback(source, engine, scope) }
+    val playback = remember { Playback(source, engine, scope, history, downloader) }
     val trayAvailable = remember { SystemTray.isSupported() }
     var visible by remember { mutableStateOf(true) }
     DisposableEffect(engine) {
-        val keys = mediaKeys(engine, scope)
+        val keys = mediaKeys(playback, scope)
         onDispose { keys.cancel(); engine.close() }
     }
     if (trayAvailable) {
@@ -35,18 +37,20 @@ fun main() = application {
                 drawCircle(p.highlight, size.minDimension * .12f)
             }
         } }
-        Tray(icon, tooltip = "Orbit Music", onAction = { visible = true }, menu = {
-            Item("Open Orbit Music", onClick = { visible = true })
-            Item("Play / pause", onClick = engine::toggle)
+        Tray(icon, tooltip = "Shinki music", onAction = { visible = true }, menu = {
+            Item("Abrir Shinki music", onClick = { visible = true })
+            Item("Reproducir / pausar", onClick = engine::toggle)
+            Item("Canción anterior", onClick = playback::back)
+            Item("Siguiente canción", onClick = { playback.next() })
             Separator()
-            Item("Quit", onClick = ::exitApplication)
+            Item("Salir", onClick = ::exitApplication)
         })
     }
     Window(visible = visible,
         onCloseRequest = { if (trayAvailable && engine.state.value.playing) visible = false else exitApplication() },
-        title = "Orbit · Music",
-        state = rememberWindowState(width = LayoutTokens(Density.Comfortable, 20f).windowWidth,
-            height = LayoutTokens(Density.Comfortable, 20f).windowHeight),
+        title = "Shinki music · Música Hi-Res",
+        state = rememberWindowState(width = LayoutTokens(Density.Comfortable, 24f).windowWidth,
+            height = LayoutTokens(Density.Comfortable, 24f).windowHeight),
     ) {
         App(source = source, history = history, playback = playback)
     }

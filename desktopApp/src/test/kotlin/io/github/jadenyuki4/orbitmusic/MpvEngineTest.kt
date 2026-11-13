@@ -11,6 +11,47 @@ import java.io.ByteArrayInputStream
 import kotlin.test.assertNull
 
 class MpvEngineTest {
+    @Test fun windowsMediaKeysReachPlayback() = runBlocking {
+        org.junit.Assume.assumeTrue(System.getProperty("orbit.mediaKeysQA") == "true")
+        val clip = File.createTempFile("shinki-control-", ".wav")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val format = AudioFormat(8000f, 16, 1, true, false)
+        try {
+            AudioInputStream(ByteArrayInputStream(ByteArray(16000 * 60)), format, 480000L).use {
+                AudioSystem.write(it, AudioFileFormat.Type.WAVE, clip)
+            }
+            val source = object : MusicSource by io.github.jadenyuki4.orbitmusic.di.PreviewMusicSource {
+                override suspend fun stream(songId: String) = SourceResult.Success(AudioStream(clip.absolutePath, "audio/wav"))
+                override suspend fun stream(songId: String, quality: AudioQuality, format: AudioFormatPreference) = stream(songId)
+            }
+            MpvEngine("null").use { engine ->
+                val player = Playback(source, engine, scope)
+                val first = MusicItem("qa1","Shinki QA one","QA",MusicKind.Song)
+                val second = first.copy(id = "qa2", title = "Shinki QA two")
+                val job = mediaKeys(player, scope)
+                try {
+                    withContext(Dispatchers.Main) { player.playFrom(first, listOf(first, second)) }
+                    withTimeout(15000) { engine.state.first { it.position >= 1 } }
+                    delay(1000)
+                    val input = com.sun.jna.NativeLibrary.getInstance("user32").getFunction("keybd_event")
+                    fun press(key: Int) {
+                        for (flags in listOf(0, 2)) input.invokeVoid(arrayOf(key.toByte(), 0.toByte(), flags, com.sun.jna.Pointer.NULL))
+                    }
+                    withTimeout(10000) {
+                        press(0xB3)
+                        engine.state.first { !it.playing }
+                        press(0xB3)
+                        engine.state.first { it.playing }
+                        press(0xB0)
+                        engine.state.first { it.track?.id == second.id }
+                        press(0xB1)
+                        engine.state.first { it.track?.id == first.id }
+                    }
+                } finally { job.cancelAndJoin(); scope.cancel() }
+            }
+        } finally { clip.delete() }
+        Unit
+    }
     @Test fun publicSearchResultDecodes() = runBlocking {
         org.junit.Assume.assumeTrue(System.getProperty("orbit.live") == "true")
         val source = io.github.jadenyuki4.orbitmusic.data.NewPipeMusicSource()
@@ -50,3 +91,4 @@ class MpvEngineTest {
         } finally { clip.delete() }
     }
 }
+
