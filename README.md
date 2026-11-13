@@ -1,6 +1,10 @@
-# Orbit Music
+# Shinki music
 
-Personal, open-source, ad-free music player foundation for Android, Linux and Windows, using Kotlin + Compose Multiplatform. The primary UX reference is [Limusic v1.3.0](https://github.com/SimoHypers/limusic/releases/tag/v1.3.0), as selected by the user. Orbit is a working name.
+Una app para escuchar musica y que tenga mis delirios.
+
+En **Ajustes** podés buscar la última versión estable en GitHub Releases, copiar un diagnóstico local y editar preferencias de artistas, grupos y géneros. Los Me gusta de canciones se administran en Favoritos. El bloqueo de géneros depende del texto disponible en el título o la búsqueda. La versión y el número de compilación se definen en `gradle.properties`.
+
+Personal, open-source, ad-free music player foundation for Android, Linux and Windows, using Kotlin + Compose Multiplatform. The primary UX reference is [Limusic v1.3.0](https://github.com/SimoHypers/limusic/releases/tag/v1.3.0), as selected by the user.
 
 Search songs, albums, artists and playlists, then select a song to play it. Android uses Media3, and Linux and Windows use libmpv. The responsive cyberpunk player includes a persistent transport, seek bar, expandable player and editable theme presets. The wide layout retains Limusic’s sidebar and right panel.
 

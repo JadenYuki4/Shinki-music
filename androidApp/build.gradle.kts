@@ -34,8 +34,8 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.gradleProperty("shinkiBuild").get().toInt()
+        versionName = providers.gradleProperty("shinkiVersion").get()
     }
     packaging {
         resources {

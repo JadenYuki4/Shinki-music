@@ -37,6 +37,7 @@ internal suspend fun recommendations(
     favorites: List<MusicItem>,
     activeQuery: String? = null,
     limit: Int = 12,
+    rules: List<TasteRule> = emptyList(),
 ): SourceResult<List<Pick>> {
     val weights = linkedMapOf<String, Double>()
     val artistAffinity = mutableMapOf<String, Double>()
@@ -47,6 +48,11 @@ internal suspend fun recommendations(
         if (key.isNotBlank()) {
             weights[key] = (weights.getOrElse(key) { 0.0 } + weight).coerceAtLeast(0.05)
         }
+    }
+
+    rules.filter { it.mode == TasteMode.Favorite }.forEach { rule ->
+        addSeed(rule.name, 6.0)
+        artistAffinity[rule.name.lowercase()] = 5.0
     }
 
     // 0. Active live search intent (highest priority when provided)
@@ -106,7 +112,7 @@ internal suspend fun recommendations(
         return when (val trending = source.discover(null, limit)) {
             is SourceResult.Failure -> trending
             is SourceResult.Success -> SourceResult.Success(
-                trending.value.items.map { Pick(it, "Tendencias musicales", score = 1.0, badge = "🔥 Tendencia") }
+                applyTaste(trending.value.items.map { Pick(it, "Tendencias musicales", score = 1.0, badge = "🔥 Tendencia") }, rules, limit)
             )
         }
     }
@@ -154,15 +160,16 @@ internal suspend fun recommendations(
 
     if (batches.isEmpty() && error != null) return SourceResult.Failure(error)
 
-    return SourceResult.Success(buildList {
+    val candidates = buildList {
         for (i in 0 until limit) {
             for (batch in batches) {
                 val pick = batch.getOrNull(i) ?: continue
                 if (known.add(pick.item.id)) add(pick)
-                if (size == limit) return@buildList
+
             }
         }
-    })
+    }
+    return SourceResult.Success(applyTaste(candidates, rules, limit))
 }
 
 /**
@@ -175,9 +182,10 @@ internal suspend fun searchContextualRecommendations(
     searches: List<SearchHistoryEntry>,
     plays: List<PlayEventRecord>,
     favorites: List<MusicItem>,
+    rules: List<TasteRule> = emptyList(),
 ): SourceResult<List<Pick>> {
     val clean = query.trim()
-    if (clean.isBlank()) return recommendations(source, searches, plays, favorites, limit = 8)
+    if (clean.isBlank()) return recommendations(source, searches, plays, favorites, limit = 8, rules = rules)
     val syntheticPlays = currentItems.take(3).mapIndexed { idx, item ->
         PlayEventRecord(
             id = -idx.toLong(),
@@ -195,7 +203,7 @@ internal suspend fun searchContextualRecommendations(
         plays = syntheticPlays + plays,
         favorites = favorites,
         activeQuery = clean,
-        limit = 10,
+        limit = 10, rules = rules,
     )) {
         is SourceResult.Failure -> res
         is SourceResult.Success -> SourceResult.Success(

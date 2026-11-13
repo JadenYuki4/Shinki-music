@@ -34,6 +34,7 @@ fun SearchScreen(
     playback: Playback? = null,
     play: (MusicItem) -> Unit,
 ) {
+    val rules = playback?.taste?.rules?.collectAsState()?.value.orEmpty()
     val controller = model.controller
     val state by controller.state.collectAsStateWithLifecycle()
     val plays by remember(controller) { controller.historyStore.observeRecentPlays(20) }.collectAsState(emptyList())
@@ -45,10 +46,10 @@ fun SearchScreen(
     LaunchedEffect(Unit) { focus.requestFocus() }
     LaunchedEffect(state.query, state.kind, state.repository) { list.scrollToItem(0) }
 
-    var contextualPicks by remember(state.submitted, state.query, state.items.size) {
+    var contextualPicks by remember(state.submitted, state.query, state.items, favorites, plays, rules, state.incognito) {
         mutableStateOf<List<Pick>>(emptyList())
     }
-    LaunchedEffect(state.submitted, state.query, state.items.size) {
+    LaunchedEffect(state.submitted, state.query, state.items, favorites, plays, rules, state.incognito) {
         if (state.submitted && state.query.isNotBlank() && !state.incognito) {
             val res = searchContextualRecommendations(
                 source = controller.source,
@@ -56,7 +57,7 @@ fun SearchScreen(
                 currentItems = state.items,
                 searches = state.history,
                 plays = plays,
-                favorites = favorites,
+                favorites = favorites, rules = rules,
             )
             if (res is SourceResult.Success) {
                 contextualPicks = res.value

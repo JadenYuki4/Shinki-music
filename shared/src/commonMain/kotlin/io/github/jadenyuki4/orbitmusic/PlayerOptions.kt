@@ -332,7 +332,7 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
                     onClick = { player.repeat.value = RepeatMode.entries[(repeat.ordinal + 1) % RepeatMode.entries.size] },
                 )
                 VividPillButton(
-                    text = if (favorite) "♥ Guardada" else "♡ Favorito",
+                    text = if (favorite) "♥ Me gusta" else "♡ Me gusta",
                     active = favorite,
                     accentColor = p.primary,
                     onClick = { scope.launch { player.history.toggleFavorite(item) } },
@@ -587,7 +587,8 @@ fun Discovery(player: Playback) {
     val privateMode by player.history.incognito.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
     if (privateMode) return
-    val personalized = searches.isNotEmpty() || plays.isNotEmpty() || favorites.isNotEmpty()
+    val rules by player.taste.rules.collectAsState()
+    val personalized = rules.any { it.mode == TasteMode.Favorite } || searches.isNotEmpty() || plays.isNotEmpty() || favorites.isNotEmpty()
 
     Row(
         Modifier.fillMaxWidth(),
@@ -611,9 +612,9 @@ fun Discovery(player: Playback) {
         TextButton(onClick = { refresh++ }) { Text("↻ Actualizar") }
     }
 
-    var result by remember(player, searches, plays, favorites, refresh) { mutableStateOf<SourceResult<List<Pick>>?>(null) }
-    LaunchedEffect(player, searches, plays, favorites, refresh) {
-        result = recommendations(player.source, searches, plays, favorites)
+    var result by remember(player, searches, plays, favorites, refresh, rules) { mutableStateOf<SourceResult<List<Pick>>?>(null) }
+    LaunchedEffect(player, searches, plays, favorites, refresh, rules) {
+        result = recommendations(player.source, searches, plays, favorites, rules = rules)
     }
     when (val feed = result) {
         null -> LinearProgressIndicator(Modifier.fillMaxWidth())

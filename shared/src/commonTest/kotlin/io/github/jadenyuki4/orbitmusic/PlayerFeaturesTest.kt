@@ -48,6 +48,36 @@ class PlayerFeaturesTest {
         override fun soundProfile(profile: SoundProfile) { lastProfile = profile }
     }
 
+    @Test fun tasteRulesPersistReplaceAndUndo() {
+        val settings = com.russhwolf.settings.MapSettings()
+        val store = TasteStore(settings)
+        store.set("Artist - Topic", TasteKind.Artist, TasteMode.Favorite)
+        store.set("ARTIST", TasteKind.Artist, TasteMode.Block)
+        val restored = TasteStore(settings)
+        assertEquals(1, restored.rules.value.size)
+        assertTrue(applyTaste(listOf(Pick(a, "rock")), restored.rules.value, 8).isEmpty())
+        restored.remove(restored.rules.value.single())
+        assertEquals(listOf(a), applyTaste(listOf(Pick(a, "rock")), TasteStore(settings).rules.value, 8).map { it.item })
+    }
+
+    @Test fun fewerGenreMatchesAndBlockedArtistAcrossRecommendationPaths() = runTest {
+        val less = TasteRule("rock", TasteKind.Genre, TasteMode.Less)
+        val preferred = TasteRule("Queen", TasteKind.Artist, TasteMode.Favorite)
+        val picks = listOf(Pick(a, "rock"), Pick(b, "rock"), Pick(c.copy(subtitle = "Queen"), "pop"))
+        assertEquals(listOf("C", "A"), applyTaste(picks, listOf(less, preferred), 8).map { it.item.id })
+        val blocked = listOf(TasteRule("artist", TasteKind.Artist, TasteMode.Block))
+        val cold = recommendations(source, emptyList(), emptyList(), emptyList(), rules = blocked)
+        val context = searchContextualRecommendations(source, "rock", emptyList(), emptyList(), emptyList(), emptyList(), blocked)
+        for (result in listOf(cold, context)) assertTrue(assertIs<SourceResult.Success<List<Pick>>>(result).value.isEmpty())
+    }
+
+    @Test fun stableReleaseTagsCompareNumerically() {
+        assertTrue(newerRelease("v5.10.0", "5.2.8"))
+        assertFalse(newerRelease("v5.2.8", "5.2.8"))
+        assertFalse(newerRelease("v4.12.9", "5.2.8"))
+        assertFails { newerRelease("v5.2.8/other", "5.2.8") }
+    }
+
     @Test fun recommendationsMixSeedsAndExcludeKnownTracks() = runTest {
         val recent = SearchHistoryEntry("rock", MusicKind.Song, 1)
         val result = recommendations(source, listOf(recent), emptyList(), listOf(a))

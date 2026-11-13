@@ -70,6 +70,8 @@ fun App(
                         )
                     }
                 }
+                MaintenancePanel()
+                TastePanel(playback)
                 ThemeControls(settings, model::dispatch, Modifier.fillMaxWidth())
                 TokenStrip()
             }

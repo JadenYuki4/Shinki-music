@@ -29,6 +29,7 @@ class Playback(
     val history: HistoryStore = io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore(),
     val downloader: TrackDownloader = NoOpTrackDownloader,
 ) {
+    internal val taste by lazy { TasteStore(com.russhwolf.settings.Settings()) }
     val queue = MutableStateFlow<List<MusicItem>>(emptyList())
     val shuffle = MutableStateFlow(false)
     val autoplay = MutableStateFlow(false)
@@ -125,7 +126,7 @@ class Playback(
                     source,
                     history.observeRecentSearches(8).first(),
                     history.observeRecentPlays(30).first(),
-                    history.observeFavorites().first(),
+                    history.observeFavorites().first(), rules = taste.rules.value,
                 )
                 ensureActive()
                 when (result) {
@@ -222,7 +223,7 @@ class Playback(
         radio?.cancel()
         radio = scope.launch {
             val result = recommendations(source, history.observeRecentSearches(8).first(),
-                history.observeRecentPlays(30).first(), history.observeFavorites().first())
+                history.observeRecentPlays(30).first(), history.observeFavorites().first(), rules = taste.rules.value)
             ensureActive()
             if (!autoplay.value || history.incognito.value || !engine.state.value.ended || engine.state.value.track?.id != current?.id) return@launch
             when (result) {

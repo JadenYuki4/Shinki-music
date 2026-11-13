@@ -9,7 +9,28 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+val generatedVersion = layout.buildDirectory.dir("generated/shinkiVersion")
+val generateVersion by tasks.registering {
+    val versionName = providers.gradleProperty("shinkiVersion")
+    val buildNumber = providers.gradleProperty("shinkiBuild")
+    inputs.property("versionName", versionName)
+    inputs.property("buildNumber", buildNumber)
+    val file = generatedVersion.map { it.file("ReleaseInfo.kt") }
+    outputs.dir(generatedVersion)
+    doLast {
+        file.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("""
+                package io.github.jadenyuki4.orbitmusic.domain
+                internal const val RELEASE_VERSION = "${versionName.get()}"
+                internal const val RELEASE_BUILD = "${buildNumber.get()}"
+            """.trimIndent())
+        }
+    }
+}
+
 kotlin {
+    sourceSets.commonMain.get().kotlin.srcDir(generateVersion)
     jvm {
         compilerOptions { jvmTarget = JvmTarget.JVM_17 }
     }

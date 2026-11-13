@@ -10,8 +10,8 @@ enum class MusicKind { Song, Album, Artist, Playlist }
  */
 object SpotiFlacAppInfo {
     const val APP_NAME = "Shinki music"
-    const val VERSION = "5.2.7"
-    const val BUILD_NUMBER = "166"
+    const val VERSION = RELEASE_VERSION
+    const val BUILD_NUMBER = RELEASE_BUILD
     const val BUNDLE_ID = "com.spotiflac.app"
     const val COPYRIGHT = "© 2026 SpotiFLAC"
     const val MOBILE_AUTHOR = "zarz"
