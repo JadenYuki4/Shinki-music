@@ -10,7 +10,6 @@ import io.github.jadenyuki4.orbitmusic.domain.HistoryStore
 import io.github.jadenyuki4.orbitmusic.domain.TrackDownloader
 import java.io.File
 
-/** Opens the app-private SQLite database and SharedPreferences on Android. */
 fun createAndroidHistoryStore(context: Context): HistoryStore {
     val appContext = context.applicationContext
     val driver = AndroidSqliteDriver(OrbitDatabase.Schema, appContext, "orbit.db")

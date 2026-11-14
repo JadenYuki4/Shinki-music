@@ -147,12 +147,14 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             return
         }
         val wasEnded = player.playbackState == Player.STATE_ENDED
+        val loadedTrack = lastLoadedTrack
+        val loadedStream = lastLoadedStream
         player.seekTo(targetSeconds * 1000L)
         if (wasEnded) {
             player.prepare()
             player.play()
-        } else if (player.playbackState == Player.STATE_IDLE && lastLoadedTrack != null && lastLoadedStream != null) {
-            loadAt(lastLoadedTrack!!, lastLoadedStream!!, targetSeconds)
+        } else if (player.playbackState == Player.STATE_IDLE && loadedTrack != null && loadedStream != null) {
+            loadAt(loadedTrack, loadedStream, targetSeconds)
             return
         }
         state.value = state.value.copy(position = targetSeconds, ended = false)

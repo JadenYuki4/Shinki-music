@@ -2,7 +2,6 @@
 package io.github.jadenyuki4.orbitmusic
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.geometry.Size

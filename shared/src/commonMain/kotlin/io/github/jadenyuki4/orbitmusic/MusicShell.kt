@@ -8,7 +8,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -26,15 +25,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.distinctUntilChanged
 import io.github.jadenyuki4.orbitmusic.theme.*
 import io.github.jadenyuki4.orbitmusic.search.*
 import androidx.compose.ui.input.key.*
@@ -44,7 +40,7 @@ private enum class Destination(val label: String, val navLabel: String, val symb
     Library("Biblioteca", "Biblioteca", "▤"),
     Downloads("Descargas offline", "Offline", "↓"),
     Search("Buscar", "Fuentes", "⊞"),
-    Settings("Ajustes", "Ajustes", "⚙"),
+    Settings("Ajustes", "Ajustes", "≡"),
 }
 
 private data class ShowcaseAlbumCard(
@@ -62,12 +58,7 @@ private val spotiFlacShowcaseAlbums = listOf(
     ShowcaseAlbumCard("Random Access", "Daft Punk", "16-bit", "Daft Punk Instant Crush", Color(0xFF3B3654)),
 )
 
-/**
- * SpotiFLAC Music Shell (`spotiflac-main/lib/screens/main_shell.dart`, `home_tab_intro.dart`, `showcase-dark.png`):
- * Implements the SpotiFLAC Expressive Dark GUI, `"Golden hour"` Home header, `"Continue listening"` indigo card
- * with 10-lobed scallop play button, 2x2 `"Shortcuts"` grid (`Shuffle library`, `Equalizer`, `Listening statistics`,
- * `Network storage`), 10-band Equalizer studio, `24-bit` Hi-Res shelves, and always-visible `TimingTransportBar`.
- */
+/** Diseño adaptado de SpotiFLAC; referencias y atribuciones en NOTICE.md. */
 @Composable
 fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Composable () -> Unit) {
     val t = LocalLayout.current
@@ -106,7 +97,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
         val showPanel = maxWidth >= t.panesBreakpoint && destination != Destination.Settings
 
         Column(Modifier.fillMaxSize()) {
-            // Top SpotiFLAC Window Bar (`desktop_window.dart`)
             Surface(color = Color(0xFF15171D)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 10.dp),
@@ -154,7 +144,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
             HorizontalDivider(color = p.muted.copy(alpha = 0.14f))
 
             Row(Modifier.weight(1f)) {
-                // Left SpotiFLAC Desktop Source-List Sidebar (`desktop_navigation.dart`)
                 if (desktop) Surface(
                     Modifier.width(t.sidebar).fillMaxHeight(),
                     color = Color(0xFF15171D),
@@ -230,7 +219,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                     }
                 }
 
-                // Center Content Pane
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     val viewKey = if (theater && track != null) "theater" else destination.name
                     Crossfade(
@@ -239,7 +227,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                     ) { currentView ->
                         when (currentView) {
                             "theater" -> if (track != null) {
-                                // SpotiFLAC Now Playing Screen (`showcase-dark.png` Screen 3 & `material_player_layout.dart`)
                                 Column(
                                     Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.large),
                                     verticalArrangement = Arrangement.spacedBy(t.small),
@@ -316,7 +303,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.medium),
                                 verticalArrangement = Arrangement.spacedBy(t.medium),
                             ) {
-                                // SpotiFLAC Library Header (`showcase-dark.png` Screen 2)
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -332,7 +318,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                         SpotiFlacQualityBadge("+ Agregar")
                                     }
                                 }
-                                // "Search your library" pill search bar
                                 Surface(
                                     shape = RoundedCornerShape(percent = 50),
                                     color = Color(0xFF1F222C),
@@ -351,7 +336,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 if (playback != null) {
                                     Library(playback) { destination = Destination.Search }
                                 } else {
-                                    // Showcase Library Grid when playback is null (e.g. Preview)
                                     SpotiFlacAlbumShelf(
                                         albums = spotiFlacShowcaseAlbums,
                                         onPlayAlbum = { card ->
@@ -365,7 +349,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.medium),
                                 verticalArrangement = Arrangement.spacedBy(18.dp),
                             ) {
-                                // 1. SpotiFLAC Home Header (`home_tab_intro.dart` & `showcase-dark.png` Screen 1)
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
                                         "Hora dorada",
@@ -380,7 +363,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     )
                                 }
 
-                                // 2. SpotiFLAC Pill Search Bar with Service Selector (`showcase-dark.png` Screen 1)
                                 Surface(
                                     shape = RoundedCornerShape(percent = 50),
                                     color = Color(0xFF1F222C),
@@ -417,7 +399,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     }
                                 }
 
-                                // 3. "Continue listening" Indigo Hero Card (`home_tab_intro.dart` & `showcase-dark.png` Screen 1)
                                 Text(
                                     "Seguir escuchando",
                                     style = MaterialTheme.typography.titleMedium,
@@ -430,7 +411,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     onBrowse = { destination = Destination.Search },
                                 )
 
-                                // 4. "Shortcuts" 2x2 Expressive Grid (`home_tab_intro.dart` & `showcase-dark.png` Screen 1)
                                 Text(
                                     "Accesos directos",
                                     style = MaterialTheme.typography.titleMedium,
@@ -442,7 +422,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                         Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     ) {
-                                        // Shortcut 1: Shuffle library (Highlighted Periwinkle #B5C7FF)
                                         SpotiFlacShortcutCard(
                                             title = "Aleatorio",
                                             iconSymbol = "⇄",
@@ -460,7 +439,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                                 }
                                             },
                                         )
-                                        // Shortcut 2: Equalizer (Plum/Mauve #523B4E)
                                         SpotiFlacShortcutCard(
                                             title = "Ecualizador",
                                             iconSymbol = "◈",
@@ -476,7 +454,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                         Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     ) {
-                                        // Shortcut 3: Offline downloads (#22252F)
                                         SpotiFlacShortcutCard(
                                             title = "Descargas offline",
                                             iconSymbol = "↓",
@@ -487,10 +464,9 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                             modifier = Modifier.weight(1f),
                                             onClick = { destination = Destination.Downloads },
                                         )
-                                        // Shortcut 4: Network storage / Multi-Repo (#22252F)
                                         SpotiFlacShortcutCard(
                                             title = "Fuentes en red",
-                                            iconSymbol = "☁",
+                                            iconSymbol = "Red",
                                             containerColor = Color(0xFF22252F),
                                             badgeColor = Color(0xFF323646),
                                             badgeTextColor = p.secondary,
@@ -501,7 +477,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     }
                                 }
 
-                                // 5. Recently added / Hi-Res Album Shelf (`showcase-dark.png` Screen 1 & 2)
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -533,7 +508,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     }
                                 }
 
-                                // 6. SpotiFLAC 10-Band Equalizer Studio (`showcase-dark.png` Screen 4)
                                 if (showEqualizerOnHome) {
                                     SpotiFlacEqualizerCard(
                                         player = playback,
@@ -544,7 +518,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     )
                                 }
 
-                                // 7. Audio Quality, Weight & Format Strip
                                 Surface(
                                     shape = RoundedCornerShape(24.dp),
                                     color = p.surface,
@@ -650,7 +623,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                     }
                 }
 
-                // Right SpotiFLAC Queue & Lyrics Inspector (`desktop_window.dart`)
                 if (showPanel) Surface(
                     Modifier.width(t.detailPane).fillMaxHeight(),
                     color = Color(0xFF15171D),
@@ -686,7 +658,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
             }
             HorizontalDivider(color = p.muted.copy(alpha = 0.16f))
             PlayerDock(playback) { theater = !theater }
-            // Mobile SpotiFLAC Expressive Navigation Bar (`expressive_navigation_bar.dart`)
             if (!desktop) NavigationBar(containerColor = Color(0xFF14161C)) {
                 Destination.entries.forEach { page ->
                     NavigationBarItem(
@@ -701,9 +672,6 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     }
 }
 
-/**
- * SpotiFLAC 2x2 Shortcut Card (`home_tab_intro.dart` & `showcase-dark.png` Screen 1).
- */
 @Composable
 private fun SpotiFlacShortcutCard(
     title: String,
@@ -752,10 +720,6 @@ private fun SpotiFlacShortcutCard(
     }
 }
 
-/**
- * SpotiFLAC Hi-Res Album Shelf (`showcase-dark.png` Screen 1 & Screen 2):
- * Rounded `22.dp` cards with top-left `24-bit` / `16-bit` badge and bottom-right circular `#B5C7FF` play button.
- */
 @Composable
 private fun SpotiFlacAlbumShelf(
     albums: List<ShowcaseAlbumCard>,

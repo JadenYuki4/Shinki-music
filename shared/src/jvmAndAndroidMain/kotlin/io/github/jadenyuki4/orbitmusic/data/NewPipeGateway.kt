@@ -104,9 +104,9 @@ internal class NewPipeGateway : ExtractorGateway {
         songId: String,
         extractor: org.schabi.newpipe.extractor.stream.StreamExtractor,
     ): List<MusicItem> {
-        val items = runCatching {
+        val relatedTracks = runCatching {
             val tags = runCatching { extractor.tags.orEmpty().take(6) }.getOrDefault(emptyList())
-            val genre = runCatching { extractor.category?.takeIf { it.isNotBlank() } }.getOrNull()
+            val genre = runCatching { extractor.category.takeIf { it.isNotBlank() } }.getOrNull()
             val genres = listOfNotNull(genre)
             extractor.relatedItems?.items.orEmpty()
                 .filterIsInstance<StreamInfoItem>()
@@ -115,10 +115,10 @@ internal class NewPipeGateway : ExtractorGateway {
                 .distinctBy { it.id }
                 .take(24)
         }.getOrDefault(emptyList())
-        if (items.isNotEmpty()) {
-            synchronized(relatedLock) { relatedCache[songId] = items }
+        if (relatedTracks.isNotEmpty()) {
+            synchronized(relatedLock) { relatedCache[songId] = relatedTracks }
         }
-        return items
+        return relatedTracks
     }
 
     override fun suggestions(query: String): List<String> {
@@ -180,32 +180,32 @@ internal class NewPipeGateway : ExtractorGateway {
                 .getOrThrow()
         }
 
-        val specs: List<Pair<Int, () -> ExtractedPage>> = listOf(
+        val searchRequests: List<Pair<Int, () -> ExtractedPage>> = listOf(
             20 to { searchYouTubeMusic(query, kind, null) },
             25 to { searchYouTubeFull(query, kind, null) },
             15 to { searchService(ServiceList.SoundCloud, query, kind, null) },
             10 to { searchService(ServiceList.Bandcamp, query, kind, null) },
         )
-        val futures = specs.map { (_, fetch) ->
+        val futures = searchRequests.map { (_, fetch) ->
             CompletableFuture.supplyAsync({ runCatching(fetch) }, searchExecutor)
         }
 
-        val results = mutableListOf<List<MusicItem>>()
+        val searchBatches = mutableListOf<List<MusicItem>>()
         var nextPage: Page? = null
         var lastError: Throwable? = null
 
         futures.forEachIndexed { idx, future ->
             val outcome = future.join()
-            val limit = specs[idx].first
+            val limit = searchRequests[idx].first
             outcome.onSuccess {
-                results += it.items.take(limit)
+                searchBatches += it.items.take(limit)
                 if (idx < 2 && nextPage == null) nextPage = it.next
             }.onFailure { err ->
                 if (idx == 0 || (idx == 1 && lastError == null)) lastError = err
             }
         }
 
-        val merged = interleaveLists(results).distinctBy { it.id }.take(80)
+        val merged = interleaveLists(searchBatches).distinctBy { it.id }.take(80)
         if (merged.isEmpty() && lastError != null) throw lastError
         return ExtractedPage(merged, nextPage)
     }
@@ -218,14 +218,14 @@ internal class NewPipeGateway : ExtractorGateway {
         page: Page?,
     ): ExtractedPage {
         val extractor = service.getSearchExtractor(query, filters, "")
-        val result = if (page == null) {
+        val extractedPage = if (page == null) {
             extractor.fetchPage()
             extractor.initialPage
         } else extractor.getPage(page)
-        if (result.items.isEmpty() && result.errors.isNotEmpty()) throw result.errors.first()
+        if (extractedPage.items.isEmpty() && extractedPage.errors.isNotEmpty()) throw extractedPage.errors.first()
         return ExtractedPage(
-            result.items.mapNotNull { mapItem(it, kind) },
-            result.nextPage.takeIf { Page.isValid(it) },
+            extractedPage.items.mapNotNull { mapItem(it, kind) },
+            extractedPage.nextPage.takeIf { Page.isValid(it) },
         )
     }
 }

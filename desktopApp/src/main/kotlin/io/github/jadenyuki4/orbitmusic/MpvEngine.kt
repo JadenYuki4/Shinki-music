@@ -78,7 +78,9 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     }
 
     private fun command(vararg args: String) {
-        check(api!!.mpv_command(handle!!, StringArray(args, "UTF-8")) >= 0)
+        val library = checkNotNull(api) { "libmpv no está inicializada." }
+        val context = checkNotNull(handle) { "El contexto de libmpv no está abierto." }
+        check(library.mpv_command(context, StringArray(args, "UTF-8")) >= 0)
     }
 
     override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
@@ -121,18 +123,24 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     }
 
     private fun number(property: String): Long? {
+        val library = checkNotNull(api) { "libmpv no está inicializada." }
+        val context = checkNotNull(handle) { "El contexto de libmpv no está abierto." }
         val value = DoubleByReference()
-        return if (api!!.mpv_get_property(handle!!, property, 5, value) >= 0) value.value.toLong().coerceAtLeast(0) else null
+        return if (library.mpv_get_property(context, property, 5, value) >= 0) value.value.toLong().coerceAtLeast(0) else null
     }
 
     private fun flag(property: String): Boolean? {
+        val library = checkNotNull(api) { "libmpv no está inicializada." }
+        val context = checkNotNull(handle) { "El contexto de libmpv no está abierto." }
         val value = com.sun.jna.ptr.IntByReference()
-        return if (api!!.mpv_get_property(handle!!, property, 3, value) >= 0) value.value != 0 else null
+        return if (library.mpv_get_property(context, property, 3, value) >= 0) value.value != 0 else null
     }
 
     private fun drainEvents() {
+        val library = checkNotNull(api) { "libmpv no está inicializada." }
+        val context = checkNotNull(handle) { "El contexto de libmpv no está abierto." }
         while (true) {
-            val event = api!!.mpv_wait_event(handle!!, 0.0)
+            val event = library.mpv_wait_event(context, 0.0)
             when (event.getInt(0)) {
                 0 -> return // MPV_EVENT_NONE
                 7 -> { // MPV_EVENT_END_FILE, data is mpv_event_end_file*

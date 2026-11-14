@@ -16,12 +16,10 @@ import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.search.userMessage
 import io.github.jadenyuki4.orbitmusic.theme.*
 
-/** Una línea de letra con su marca de tiempo en milisegundos. */
 data class LyricLine(val timeMillis: Long, val text: String) {
     val timeSeconds: Long get() = timeMillis / 1000L
 }
 
-/** Resultado de interpretar una letra, sincronizada (LRC) o en texto plano. */
 data class ParsedLyrics(val syncedLines: List<LyricLine>, val plainText: String) {
     val isSynced: Boolean get() = syncedLines.isNotEmpty()
 }
@@ -29,7 +27,6 @@ data class ParsedLyrics(val syncedLines: List<LyricLine>, val plainText: String)
 private val LRC_TIME_TAG = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]""")
 private val LRC_META_LINE = Regex("""^\[[A-Za-z#][^\]]*:[^\]]*\]$""")
 
-/** Interpreta una letra en formato LRC (`[mm:ss.xx] texto`); si no tiene marcas de tiempo devuelve el texto plano. */
 fun parseLrcLyrics(raw: String): ParsedLyrics {
     val synced = ArrayList<LyricLine>()
     val plain = ArrayList<String>()
@@ -38,10 +35,10 @@ fun parseLrcLyrics(raw: String): ParsedLyrics {
         if (rest.isEmpty() || LRC_META_LINE.matches(rest)) continue
         val times = ArrayList<Long>()
         while (true) {
-            val m = LRC_TIME_TAG.find(rest)?.takeIf { it.range.first == 0 } ?: break
-            val minutes = m.groupValues[1].toLong()
-            val seconds = m.groupValues[2].toLong()
-            val fraction = m.groupValues[3]
+            val timeTag = LRC_TIME_TAG.find(rest)?.takeIf { it.range.first == 0 } ?: break
+            val minutes = timeTag.groupValues[1].toLong()
+            val seconds = timeTag.groupValues[2].toLong()
+            val fraction = timeTag.groupValues[3]
             val millis = when (fraction.length) {
                 0 -> 0L
                 1 -> fraction.toLong() * 100L
@@ -49,17 +46,16 @@ fun parseLrcLyrics(raw: String): ParsedLyrics {
                 else -> fraction.toLong()
             }
             times += minutes * 60_000L + seconds * 1_000L + millis
-            rest = rest.substring(m.value.length).trimStart()
+            rest = rest.substring(timeTag.value.length).trimStart()
         }
         if (times.isEmpty()) continue
-        for (t in times) synced += LyricLine(t, rest)
+        for (timeMillis in times) synced += LyricLine(timeMillis, rest)
         if (rest.isNotEmpty()) plain += rest
     }
     if (synced.isEmpty()) return ParsedLyrics(emptyList(), raw.trim())
     return ParsedLyrics(synced.sortedBy { it.timeMillis }, plain.joinToString("\n"))
 }
 
-/** Índice de la línea activa para la posición dada, o -1 si todavía no empezó ninguna. */
 fun activeLyricIndex(lines: List<LyricLine>, positionSeconds: Long): Int =
     lines.indexOfLast { it.timeSeconds <= positionSeconds }
 
@@ -72,19 +68,19 @@ private fun formatLyricTime(seconds: Long): String {
 fun SyncedLyricsView(player: Playback, item: MusicItem) {
     val p = LocalPalette.current
     var attempt by remember(item.id) { mutableIntStateOf(1) }
-    var result by remember(item.id, attempt) { mutableStateOf<SourceResult<String?>?>(null) }
-    LaunchedEffect(item.id, attempt) { result = player.source.lyrics(item) }
+    var lyricsResponse by remember(item.id, attempt) { mutableStateOf<SourceResult<String?>?>(null) }
+    LaunchedEffect(item.id, attempt) { lyricsResponse = player.source.lyrics(item) }
     val state by player.engine.state.collectAsState()
     var showFull by remember(item.id) { mutableStateOf(false) }
 
-    when (val res = result) {
+    when (val response = lyricsResponse) {
         null -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         is SourceResult.Failure -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(res.error.userMessage())
+            Text(response.error.userMessage())
             TextButton(onClick = { attempt++ }) { Text("↻ Reintentar") }
         }
         is SourceResult.Success -> {
-            val raw = res.value
+            val raw = response.value
             if (raw.isNullOrBlank()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("No hay letra disponible para esta canción.")

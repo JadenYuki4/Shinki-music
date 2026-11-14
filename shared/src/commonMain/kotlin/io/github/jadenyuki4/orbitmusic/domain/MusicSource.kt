@@ -87,7 +87,7 @@ enum class MusicRepository(
     ),
     SoundCloud(
         "SoundCloud",
-        "☁ SoundCloud",
+        "SoundCloud",
         "SOUNDCLOUD",
         "Repositorio de pistas independientes, electrónica, lo-fi y remixes",
     ),

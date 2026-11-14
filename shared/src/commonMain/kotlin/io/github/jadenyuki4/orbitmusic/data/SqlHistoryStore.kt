@@ -13,10 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 
-/**
- * SQLDelight + Multiplatform Settings implementation of [HistoryStore].
- * Keeps search history bounded at [maxSearchEntries] and play history at [maxPlayEntries].
- */
 class SqlHistoryStore(
     driver: SqlDriver,
     private val settings: Settings,
@@ -258,7 +254,7 @@ class SqlHistoryStore(
     }
 }
 
-/** In-memory no-op store for IDE previews and tests that do not supply a database driver. */
+/** Las vistas previas y los tests pueden guardar estado sin necesitar un driver SQLite. */
 class InMemoryHistoryStore : HistoryStore {
     override val playlists = io.github.jadenyuki4.orbitmusic.Playlists()
     private val incognitoState = MutableStateFlow(false)

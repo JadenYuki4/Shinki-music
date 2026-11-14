@@ -177,7 +177,6 @@ internal fun scoreAutoQueueCandidate(
     val candArtist = normalizeCanonicalArtist(candidate.subtitle)
     val candTokens = itemSemanticTokens(candidate)
 
-    // 1. Similitud con el ultimo tema escuchado (0.0 .. 1.0)
     var lastSimilarity = 0.0
     if (seedTrack != null) {
         if (candidate.id in relatedIds) lastSimilarity += 0.55
@@ -201,7 +200,6 @@ internal fun scoreAutoQueueCandidate(
     }
     lastSimilarity = lastSimilarity.coerceIn(0.0, 1.0)
 
-    // 2. Afinidad por habitos de escucha (0.0 .. 1.0) y 3. Penalizaciones
     val artistHabitWeights = mutableMapOf<String, Double>()
     val tokenHabitWeights = mutableMapOf<String, Double>()
     val skippedArtists = mutableMapOf<String, Double>()
@@ -231,7 +229,6 @@ internal fun scoreAutoQueueCandidate(
     habitsAffinity += candTokens.sumOf { tokenHabitWeights[it] ?: 0.0 } * 0.20
     habitsAffinity = habitsAffinity.coerceIn(0.0, 1.0)
 
-    // 3. Afinidad por favoritos / Me gusta y reglas explicitas (0.0 .. 1.0)
     val favoriteArtists = mutableMapOf<String, Double>()
     val favoriteTokens = mutableSetOf<String>()
     favorites.take(30).forEachIndexed { index, fav ->
@@ -308,7 +305,6 @@ internal fun rankAndSelectAutoQueueBatch(
     val blockedGenres = rules.filter { it.mode == TasteMode.Block && it.kind == TasteKind.Genre }
         .map { stripAccents(it.name) }.filter { it.isNotEmpty() }
 
-    // Excluir tema semilla, cola actual, historial reciente y variantes duplicadas entre si.
     val excludedItems = buildList {
         if (seedTrack != null) add(seedTrack)
         addAll(queueItems)
@@ -343,7 +339,6 @@ internal fun rankAndSelectAutoQueueBatch(
         }
         .sortedByDescending { it.totalScore }
 
-    // Mezcla ~80% afines y ~20% descubrimiento.
     val affinityPool = scored.filterNot { it.isDiscovery }.toMutableList()
     val discoveryPool = scored.filter { it.isDiscovery }.toMutableList()
     val affinityTarget = (clampedBatch * RecommendationWeights.AFFINITY_SHARE).roundToInt().coerceAtLeast(1)
@@ -478,13 +473,6 @@ internal suspend fun autoQueueBatch(
     return SourceResult.Success(selected)
 }
 
-/**
- * Multi-signal recommendation engine combining:
- * 1. Search intent (recent queries + recurring keywords across searches + optional active search query)
- * 2. Listening behavior (completion-weighted plays + skip penalties)
- * 3. Explicit user curation (favorites artist & track themes)
- * 4. Candidate affinity scoring & round-robin seed diversity
- */
 internal suspend fun recommendations(
     source: MusicSource,
     searches: List<SearchHistoryEntry>,
@@ -510,7 +498,6 @@ internal suspend fun recommendations(
         artistAffinity[rule.name.lowercase()] = 5.0
     }
 
-    // 0. Active live search intent (highest priority when provided)
     activeQuery?.trim()?.takeIf { it.isNotBlank() }?.let { live ->
         addSeed(live, 8.0)
         extractKeywords(live).take(2).forEach { token ->
@@ -518,7 +505,6 @@ internal suspend fun recommendations(
         }
     }
 
-    // 1. Recent search queries with recency decay + cross-query keyword reinforcement
     val tokenCounts = mutableMapOf<String, Int>()
     searches.take(10).forEachIndexed { i, entry ->
         val decay = 1.0 / (1 + i)
@@ -533,7 +519,6 @@ internal suspend fun recommendations(
         }
     }
 
-    // 2. Listening history: reward high completion ratios, penalize repeated early skips
     plays.take(20).forEachIndexed { i, record ->
         val decay = 1.0 / (1 + i)
         val artist = record.item.subtitle.removeSuffix(" - Topic").trim().lowercase()
@@ -549,7 +534,6 @@ internal suspend fun recommendations(
         }
     }
 
-    // 3. Favorites: strong positive signal for favorite artists and multi-word song themes
     favorites.take(10).forEachIndexed { i, item ->
         val decay = 1.0 / (1 + i)
         addSeed(item.subtitle, 3.0 * decay)
@@ -567,7 +551,7 @@ internal suspend fun recommendations(
         return when (val trending = source.discover(null, limit)) {
             is SourceResult.Failure -> trending
             is SourceResult.Success -> SourceResult.Success(
-                applyTaste(trending.value.items.map { Pick(it, "Tendencias musicales", score = 1.0, badge = "🔥 Tendencia") }, rules, limit)
+                applyTaste(trending.value.items.map { Pick(it, "Tendencias musicales", score = 1.0, badge = "Tendencia") }, rules, limit)
             )
         }
     }
@@ -630,9 +614,6 @@ internal suspend fun recommendations(
     return SourceResult.Success(applyTaste(candidates, rules, limit))
 }
 
-/**
- * Generates contextual song recommendations directly from an active search query and its current results.
- */
 internal suspend fun searchContextualRecommendations(
     source: MusicSource,
     query: String,

@@ -15,7 +15,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 
-/** Downloads progressive HTTPS audio streams into a local directory for offline playback. */
 class FileTrackDownloader(
     private val downloadsDir: File,
     private val onOpenFolder: (File) -> Boolean = { false },
@@ -54,9 +53,9 @@ class FileTrackDownloader(
 
         try {
             if (scheme == "file") {
-                val src = File(uri)
-                require(src.isFile && src.length() > 0L) { "El archivo de origen no existe." }
-                src.copyTo(partFile, overwrite = true)
+                val sourceFile = File(uri)
+                require(sourceFile.isFile && sourceFile.length() > 0L) { "El archivo de origen no existe." }
+                sourceFile.copyTo(partFile, overwrite = true)
                 onProgress(1f)
             } else {
                 downloadHttpsToFile(uri, partFile, onProgress)
@@ -79,15 +78,16 @@ class FileTrackDownloader(
                 fileSizeBytes = target.length(),
                 artworkLocalPath = localArt,
             )
-        } catch (t: Throwable) {
+        } catch (failure: Throwable) {
+            // La cancelación también debe limpiar el archivo parcial antes de propagarse.
             partFile.delete()
-            throw t
+            throw failure
         }
     }
 
     private suspend fun downloadHttpsToFile(
         uri: URI,
-        dest: File,
+        destinationFile: File,
         onProgress: (Float?) -> Unit,
     ) {
         val connection = uri.toURL().openConnection() as HttpURLConnection
@@ -105,7 +105,7 @@ class FileTrackDownloader(
             onProgress(if (totalBytes != null) 0f else null)
 
             BufferedInputStream(connection.inputStream, 32 * 1024).use { input ->
-                FileOutputStream(dest).use { output ->
+                FileOutputStream(destinationFile).use { output ->
                     val buffer = ByteArray(16 * 1024)
                     var downloaded = 0L
                     var checkedHeader = false
@@ -168,15 +168,15 @@ class FileTrackDownloader(
 }
 
 internal fun extensionForStream(stream: AudioStream): String {
-    val mime = stream.mimeType.lowercase()
-    val fmt = stream.formatLabel.orEmpty().lowercase()
+    val mimeType = stream.mimeType.lowercase()
+    val formatLabel = stream.formatLabel.orEmpty().lowercase()
     return when {
-        mime.contains("mp4") || mime.contains("m4a") || fmt.contains("m4a") -> "m4a"
-        mime.contains("webm") || fmt.contains("webm") || fmt.contains("opus") -> "webm"
-        mime.contains("mpeg") || mime.contains("mp3") || fmt.contains("mp3") -> "mp3"
-        mime.contains("ogg") || fmt.contains("ogg") -> "ogg"
-        mime.contains("flac") || fmt.contains("flac") -> "flac"
-        mime.contains("wav") || fmt.contains("wav") -> "wav"
+        mimeType.contains("mp4") || mimeType.contains("m4a") || formatLabel.contains("m4a") -> "m4a"
+        mimeType.contains("webm") || formatLabel.contains("webm") || formatLabel.contains("opus") -> "webm"
+        mimeType.contains("mpeg") || mimeType.contains("mp3") || formatLabel.contains("mp3") -> "mp3"
+        mimeType.contains("ogg") || formatLabel.contains("ogg") -> "ogg"
+        mimeType.contains("flac") || formatLabel.contains("flac") -> "flac"
+        mimeType.contains("wav") || formatLabel.contains("wav") -> "wav"
         else -> "m4a"
     }
 }

@@ -8,7 +8,6 @@ data class DownloadedAudioFile(
     val artworkLocalPath: String? = null,
 )
 
-/** Abstraction for saving and managing local offline audio files across platforms. */
 interface TrackDownloader {
     val downloadsDirectoryPath: String
     val supportsOpenFolder: Boolean get() = false

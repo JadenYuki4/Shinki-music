@@ -19,10 +19,6 @@ import io.github.jadenyuki4.orbitmusic.theme.LocalPalette
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/**
- * Construye la cadena de filtro de audio `lavfi` de 10 bandas para `mpv` a partir de las ganancias en dB.
- * Devuelve `""` si el ecualizador está desactivado o todas las bandas están prácticamente en 0 dB.
- */
 fun buildMpvLavfiEqualizerFilter(bandsDb: List<Float>, enabled: Boolean = true): String {
     if (!enabled || bandsDb.isEmpty()) return ""
     val frequencies = ShinkiAppInfo.EQ_FREQUENCIES_HZ
@@ -57,9 +53,6 @@ private fun formatSignedDbText(value: Float): String {
     return "$sign${absTenths / 10}.${absTenths % 10} dB"
 }
 
-/**
- * Controles deslizantes interactivos para ajustar manualmente cada una de las 10 bandas del ecualizador.
- */
 @Composable
 fun InteractiveEqualizerSliders(
     bandsDb: List<Float>,
@@ -147,9 +140,6 @@ fun InteractiveEqualizerSliders(
     }
 }
 
-/**
- * Manejador global de atajos de teclado para escritorio.
- */
 fun handleGlobalKeyboardShortcut(
     event: KeyEvent,
     playback: Playback?,
@@ -209,9 +199,6 @@ private val desktopShortcutsList = listOf(
     KeyboardShortcutEntry("Esc", "Cerrar reproductor expandido"),
 )
 
-/**
- * Panel para la pantalla de Ajustes con gestión de almacenamiento/caché offline y guía de atajos de teclado.
- */
 @Composable
 fun CacheAndShortcutsPanel(playback: Playback?) {
     val p = LocalPalette.current

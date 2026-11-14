@@ -18,10 +18,6 @@ import androidx.compose.ui.unit.dp
 import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.theme.*
 
-/**
- * Validador de URLs musicales compatibles con la aplicación (puro Kotlin, multiplatform).
- * Dominios admitidos: YouTube, YouTube Music, youtu.be, SoundCloud y Bandcamp.
- */
 internal fun isValidSupportedMusicUrl(url: String): Boolean {
     val trimmed = url.trim()
     if (!trimmed.startsWith("https://", ignoreCase = true)) return false
@@ -50,9 +46,6 @@ internal fun isValidSupportedMusicHost(host: String): Boolean {
     }
 }
 
-/**
- * Exporta una lista local al formato estándar M3U8 con metadatos extendidos.
- */
 fun exportPlaylistToM3u8(playlist: LocalPlaylist): String = buildString {
     appendLine("#EXTM3U")
     appendLine("#PLAYLIST:${playlist.name}")
@@ -63,10 +56,6 @@ fun exportPlaylistToM3u8(playlist: LocalPlaylist): String = buildString {
     }
 }
 
-/**
- * Parsea e importa una lista desde texto con formato M3U / M3U8.
- * Deduplica enlaces por ID, limita a un máximo de 100 canciones y valida dominios soportados.
- */
 fun importPlaylistFromM3u8(defaultName: String, content: String): LocalPlaylist {
     var playlistTag: String? = null
     var pendingDuration: Long? = null
@@ -128,7 +117,6 @@ fun importPlaylistFromM3u8(defaultName: String, content: String): LocalPlaylist 
                     }
                 }
             }
-            // Se consumen o descartan los metadatos pendientes de la pista
             pendingDuration = null
             pendingTitle = null
             pendingSubtitle = null
@@ -147,9 +135,6 @@ fun importPlaylistFromM3u8(defaultName: String, content: String): LocalPlaylist 
     return LocalPlaylist(name = resolvedName, songs = songs)
 }
 
-/**
- * Panel de configuración y herramientas para respaldo JSON e importación/exportación M3U8.
- */
 @Composable
 fun BackupAndM3uPanel(
     player: Playback?,
@@ -321,7 +306,7 @@ fun BackupAndM3uPanel(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 Text(
-                                    text = "📄 ${list.name}",
+                                    text = "${list.name}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = p.text,
                                 )
@@ -338,7 +323,6 @@ fun BackupAndM3uPanel(
         }
     }
 
-    // Cuadro de diálogo para restaurar desde JSON
     if (showJsonRestoreDialog) {
         AlertDialog(
             onDismissRequest = { showJsonRestoreDialog = false },
@@ -393,7 +377,6 @@ fun BackupAndM3uPanel(
         )
     }
 
-    // Cuadro de diálogo para importar lista M3U8
     if (showM3uImportDialog) {
         AlertDialog(
             onDismissRequest = { showM3uImportDialog = false },
@@ -455,7 +438,6 @@ fun BackupAndM3uPanel(
         )
     }
 
-    // Cuadro de diálogo para seleccionar qué lista exportar a M3U8
     if (showExportM3uPicker) {
         AlertDialog(
             onDismissRequest = { showExportM3uPicker = false },

@@ -163,7 +163,6 @@ class Playback(
         return cur
     }
 
-    /** Seeks to [seconds], supporting active playback, pending stream resolution, and restored sessions. */
     fun seekTo(seconds: Long) {
         val pendingTrack = pending.value
         val cur = currentTransport()
@@ -214,19 +213,19 @@ class Playback(
         } else {
             radio?.cancel()
             radio = scope.launch {
-                val result = recommendations(
+                val recommendationResponse = recommendations(
                     source,
                     history.observeRecentSearches(8).first(),
                     history.observeRecentPlays(30).first(),
                     history.observeFavorites().first(), rules = taste.rules.value,
                 )
                 ensureActive()
-                when (result) {
+                when (recommendationResponse) {
                     is SourceResult.Success -> {
-                        val songs = result.value.map { it.item }
+                        val songs = recommendationResponse.value.map { it.item }
                         if (songs.isNotEmpty()) playFrom(songs.first(), songs)
                     }
-                    is SourceResult.Failure -> failure.value = result.error.userMessage()
+                    is SourceResult.Failure -> failure.value = recommendationResponse.error.userMessage()
                 }
             }
         }
@@ -357,7 +356,7 @@ class Playback(
         refillJob?.cancel()
         refillJob = scope.launch {
             if (!autoplay.value || history.incognito.value || !autoQueueActive) return@launch
-            val result = autoQueueBatch(
+            val recommendationBatch = autoQueueBatch(
                 source = source,
                 seedTrack = seed ?: autoQueueSeed,
                 queueItems = queue.value,
@@ -370,12 +369,12 @@ class Playback(
             ensureActive()
             if (!autoQueueActive || !autoplay.value || history.incognito.value) return@launch
             if (seed != null && autoQueueSeed != null && autoQueueSeed?.id != seed.id) return@launch
-            if (result is SourceResult.Success && result.value.isNotEmpty()) {
+            if (recommendationBatch is SourceResult.Success && recommendationBatch.value.isNotEmpty()) {
                 val existing = queue.value
                 val available = (100 - existing.size).coerceAtLeast(0)
                 if (available == 0) return@launch
                 val existingIds = existing.mapTo(mutableSetOf()) { it.id }
-                val toAdd = result.value.filter { cand ->
+                val toAdd = recommendationBatch.value.filter { cand ->
                     cand.id !in existingIds && existing.none { isSameTrackVariant(it, cand) }
                 }.take(available)
                 if (toAdd.isNotEmpty()) {
@@ -388,7 +387,7 @@ class Playback(
     private fun continueWithRecommendations(current: MusicItem?) {
         radio?.cancel()
         radio = scope.launch {
-            val result = autoQueueBatch(
+            val recommendationBatch = autoQueueBatch(
                 source = source,
                 seedTrack = current ?: autoQueueSeed,
                 queueItems = queue.value,
@@ -400,11 +399,11 @@ class Playback(
             )
             ensureActive()
             if (!autoplay.value || history.incognito.value || !engine.state.value.ended || engine.state.value.track?.id != current?.id) return@launch
-            when (result) {
+            when (recommendationBatch) {
                 is SourceResult.Success -> {
                     val existing = queue.value
                     val ids = existing.mapTo(mutableSetOf()) { it.id }
-                    val fresh = result.value.filter { cand ->
+                    val fresh = recommendationBatch.value.filter { cand ->
                         cand.id !in ids && existing.none { isSameTrackVariant(it, cand) }
                     }
                     if (fresh.isNotEmpty()) {
@@ -417,7 +416,7 @@ class Playback(
                         select(fresh.first())
                     }
                 }
-                is SourceResult.Failure -> failure.value = result.error.userMessage()
+                is SourceResult.Failure -> failure.value = recommendationBatch.error.userMessage()
             }
         }
     }
@@ -546,19 +545,19 @@ class Playback(
                     history.removeDownload(track.id)
                 }
 
-                val result = source.stream(track.id, reqQuality, reqFormat)
+                val streamResponse = source.stream(track.id, reqQuality, reqFormat)
                 ensureActive()
-                when (result) {
+                when (streamResponse) {
                     is SourceResult.Success -> {
                         val startAt = pendingSeekSeconds ?: resumePositionSeconds
                         pendingSeekSeconds = null
-                        currentStream.value = result.value
+                        currentStream.value = streamResponse.value
                         engine.volume(if (muted.value) 0f else volume.value)
-                        engine.loadAt(track, result.value, startAt)
+                        engine.loadAt(track, streamResponse.value, startAt)
                         engine.soundProfile(soundProfile.value)
 
                     }
-                    is SourceResult.Failure -> failure.value = result.error.userMessage()
+                    is SourceResult.Failure -> failure.value = streamResponse.error.userMessage()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -592,12 +591,12 @@ class Playback(
                 if (existing != null && downloader.exists(existing.localPath)) {
                     return@launch
                 }
-                when (val result = source.stream(track.id, reqQuality, reqFormat)) {
+                when (val streamResponse = source.stream(track.id, reqQuality, reqFormat)) {
                     is SourceResult.Failure -> {
-                        downloadErrors.update { it + (track.id to result.error.userMessage()) }
+                        downloadErrors.update { it + (track.id to streamResponse.error.userMessage()) }
                     }
                     is SourceResult.Success -> {
-                        val stream = result.value
+                        val stream = streamResponse.value
                         val saved = downloader.downloadToLocal(track, stream) { progress ->
                             activeDownloads.update { it + (track.id to progress) }
                         }

@@ -3,8 +3,6 @@ package io.github.jadenyuki4.orbitmusic
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import com.russhwolf.settings.Settings
 import io.github.jadenyuki4.orbitmusic.domain.AudioFormatPreference
@@ -12,6 +10,7 @@ import io.github.jadenyuki4.orbitmusic.domain.AudioQuality
 import io.github.jadenyuki4.orbitmusic.domain.MusicItem
 import io.github.jadenyuki4.orbitmusic.domain.MusicKind
 import io.github.jadenyuki4.orbitmusic.domain.SoundProfile
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -19,6 +18,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 data class SavedPlaybackSession(
     val queue: List<MusicItem>,
@@ -93,18 +93,18 @@ class SessionStore(private val settings: Settings = Settings()) {
     }
 
     private fun parseItem(line: String): MusicItem? {
-        val cols = line.split('\t')
-        if (cols.size < 3) return null
-        val id = cols[0].trim()
-        val title = cols[1].trim()
+        val fields = line.split('\t')
+        if (fields.size < 3) return null
+        val id = fields[0].trim()
+        val title = fields[1].trim()
         if (id.isBlank() || title.isBlank()) return null
         return MusicItem(
             id = id,
             title = title,
-            subtitle = cols[2].trim(),
+            subtitle = fields[2].trim(),
             kind = MusicKind.Song,
-            artworkUrl = cols.getOrNull(3)?.trim()?.takeIf { it.isNotEmpty() },
-            durationSeconds = cols.getOrNull(4)?.trim()?.toLongOrNull()?.takeIf { it >= 0 },
+            artworkUrl = fields.getOrNull(3)?.trim()?.takeIf { it.isNotEmpty() },
+            durationSeconds = fields.getOrNull(4)?.trim()?.toLongOrNull()?.takeIf { it >= 0 },
         )
     }
 
@@ -121,7 +121,7 @@ class SessionStore(private val settings: Settings = Settings()) {
     }
 }
 
-/** Restores queue and preferences only; never starts audio playback. */
+/** La apertura debe esperar la primera acción del usuario antes de iniciar el audio. */
 fun Playback.restoreSession(session: SavedPlaybackSession) {
     shuffle.value = session.shuffle
     repeat.value = session.repeat
@@ -185,34 +185,34 @@ internal fun Playback?.displayTransport(): Transport {
 
 @Composable
 internal fun Playback?.displayTrack(): MusicItem? {
-    val pb = this ?: return null
-    return remember(pb) {
-        combine(pb.engine.state, pb.restored) { live, saved ->
+    val playback = this ?: return null
+    return remember(playback) {
+        combine(playback.engine.state, playback.restored) { live, saved ->
             (live.takeIf { it.track != null } ?: saved ?: live).track
         }.distinctUntilChanged()
-    }.collectAsState(initial = (pb.engine.state.value.takeIf { it.track != null } ?: pb.restored.value)?.track).value
+    }.collectAsState(initial = (playback.engine.state.value.takeIf { it.track != null } ?: playback.restored.value)?.track).value
 }
 
 @OptIn(FlowPreview::class)
 fun Playback.persistSession(scope: CoroutineScope, store: SessionStore) {
-    val pb = this
-    store.load()?.let(pb::restoreSession)
+    val playback = this
+    store.load()?.let(playback::restoreSession)
     scope.launch {
-        combine(pb.volume, pb.muted, pb.autoplay) { v, m, a -> Triple(v, m, a) }
+        combine(playback.volume, playback.muted, playback.autoplay) { v, m, a -> Triple(v, m, a) }
             .distinctUntilChanged()
             .drop(1)
             .debounce(500L)
             .collect {
-                runCatching { store.save(pb.snapshotSession()) }
+                runCatching { store.save(playback.snapshotSession()) }
             }
     }
     scope.launch {
         var lastPositionSaveMark: kotlin.time.TimeMark? = null
         var lastStructural: Any? = null
-        val settingsFlow = combine(pb.queue, pb.shuffle, pb.repeat, pb.audioQuality, pb.audioFormat) { q, s, r, qu, f ->
+        val settingsFlow = combine(playback.queue, playback.shuffle, playback.repeat, playback.audioQuality, playback.audioFormat) { q, s, r, qu, f ->
             SessionSignal(q, s, r, qu, f, SoundProfile.AnimeOST, null, 0L)
         }
-        combine(settingsFlow, pb.soundProfile, pb.engine.state) { base, profile, transport ->
+        combine(settingsFlow, playback.soundProfile, playback.engine.state) { base, profile, transport ->
             base.copy(profile = profile, trackId = transport.track?.id, position = transport.position) to transport.playing
         }
             .distinctUntilChanged()
@@ -227,7 +227,7 @@ fun Playback.persistSession(scope: CoroutineScope, store: SessionStore) {
                 }
                 lastStructural = structural
                 lastPositionSaveMark = kotlin.time.TimeSource.Monotonic.markNow()
-                runCatching { store.save(pb.snapshotSession()) }
+                runCatching { store.save(playback.snapshotSession()) }
                 delay(1000) // minimum cooldown between consecutive writes
             }
     }

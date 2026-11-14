@@ -84,7 +84,6 @@ fun SearchScreen(
             )
         }
 
-        // Always-visible Timing & Player Transport Bar while searching!
         Surface(
             shape = RoundedCornerShape(22.dp),
             color = p.surface,
@@ -126,7 +125,6 @@ fun SearchScreen(
             },
         )
 
-        // Multi-Repository & SpotiFLAC Service Selector Row
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(t.unit),
             verticalAlignment = Alignment.CenterVertically,
@@ -150,7 +148,6 @@ fun SearchScreen(
             }
         }
 
-        // Category + Quick Tags Row
         LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
             items(MusicKind.entries, key = { it.name }) { kind ->
                 VividPillButton(
@@ -247,7 +244,6 @@ fun SearchScreen(
                 }
             }
 
-            // Contextual recommendations based on the user's current search!
             if (contextualPicks.isNotEmpty() && state.submitted) {
                 item("contextual-recommendations") {
                     Surface(

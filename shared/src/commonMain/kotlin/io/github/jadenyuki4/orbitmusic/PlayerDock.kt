@@ -11,14 +11,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,17 +45,10 @@ import androidx.compose.ui.unit.dp
 import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.theme.*
 
-/**
- * SpotiFLAC Pill Shape (`RoundedCornerShape(50)`) used across chips, badges, and search bars.
- */
 val AestheticPetalShape: Shape = RoundedCornerShape(percent = 50)
 
-/**
- * SpotiFLAC Expressive Card / Button Shape (`RoundedCornerShape(22.dp)`) used across containers and transport controls.
- */
 val AestheticGemShape: Shape = RoundedCornerShape(22.dp)
 
-/** Angular S monogram for Shinki music. */
 @Composable
 fun ShinkiBrandBadge(modifier: Modifier = Modifier, size: Dp = 30.dp) {
     val palette = LocalPalette.current
@@ -77,9 +67,6 @@ fun ShinkiBrandBadge(modifier: Modifier = Modifier, size: Dp = 30.dp) {
     }
 }
 
-/**
- * SpotiFLAC Quality Badge (`24-bit`, `16-bit`, `✦ FLAC · 24-bit · 48 kHz`) from `showcase-dark.png`.
- */
 @Composable
 fun SpotiFlacQualityBadge(
     text: String,
@@ -107,10 +94,6 @@ fun SpotiFlacQualityBadge(
     }
 }
 
-/**
- * SpotiFLAC Material 3 Expressive 10-lobed Scallop / Starburst Play Button
- * as featured in the `Continue listening` card of `showcase-dark.png`.
- */
 @Composable
 fun SpotiFlacScallopPlayButton(
     playing: Boolean,
@@ -174,10 +157,6 @@ enum class PlayerIconKind {
     Play, Pause, Previous, Next, Rewind10, Forward10, Shuffle, Repeat, RepeatOne, Stop, VolumeDown, VolumeUp, Speaker, Mute
 }
 
-/**
- * SpotiFLAC Expressive Icon Button (`lib/widgets/expressive_playback_transport.dart`):
- * Rounded squircle container (`#2B3040` / `#33394B`) with spring physics and custom vector icons.
- */
 @Composable
 fun VividPlayerIconButton(
     icon: PlayerIconKind,
@@ -261,10 +240,6 @@ fun VividPlayerIconButton(
     }
 }
 
-/**
- * SpotiFLAC Centerpiece Play/Pause Button (`showcase-dark.png` Screen 3 & Player Bar):
- * Solid expressive periwinkle (`#B5C7FF`) circle/pill with dark high-contrast icon and spring bounce.
- */
 @Composable
 fun VividPlayPauseButton(
     playing: Boolean,
@@ -317,9 +292,6 @@ fun VividPlayPauseButton(
     }
 }
 
-/**
- * SpotiFLAC Pill Chip / Action Button (`RoundedCornerShape(50)`).
- */
 @Composable
 fun VividPillButton(
     text: String,
@@ -551,9 +523,6 @@ private fun DrawScope.drawPlayerVectorIcon(kind: PlayerIconKind, color: Color) {
     }
 }
 
-/**
- * Anime Equalizer Visualizer bars next to the song title in the dock.
- */
 @Composable
 fun AnimeEqualizerBars(playing: Boolean, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
@@ -575,11 +544,6 @@ fun AnimeEqualizerBars(playing: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Reusable Timing + Music Player Controls Strip:
- * Places the aesthetic transport buttons (Shuffle, Prev, -10s, Play/Pause, +10s, Next, Repeat, Vol -, Vol +)
- * directly inside the timing bar so they are ALWAYS visible even while searching!
- */
 @Composable
 fun TimingTransportBar(
     playback: Playback?,
@@ -611,7 +575,6 @@ fun TimingTransportBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Transport buttons right inside the timing bar
         if (!compact) {
             VividPlayerIconButton(
                 icon = PlayerIconKind.Shuffle,
@@ -679,7 +642,6 @@ fun TimingTransportBar(
             )
         }
 
-        // Timing clock + SpotiFLAC Seek Slider with vertical bar thumb + Duration clock
         Text(
             clock(currentPos),
             color = p.text,
@@ -698,27 +660,23 @@ fun TimingTransportBar(
                 modifier = Modifier.weight(1f).height(22.dp),
             )
         } else {
-            // SpotiFLAC PlaybackSeekSlider (`lib/widgets/playback_seek_slider.dart`) with vertical bar thumb `|`
             Canvas(Modifier.weight(1f).height(18.dp)) {
                 val trackH = 5.dp.toPx()
                 val cy = size.height / 2f
                 val progress = 0f
                 val thumbX = size.width * progress
-                // Inactive track
                 drawRoundRect(
                     color = Color(0xFF2B2F3D),
                     topLeft = Offset(0f, cy - trackH / 2f),
                     size = Size(size.width, trackH),
                     cornerRadius = CornerRadius(trackH / 2f),
                 )
-                // Active track
                 drawRoundRect(
                     color = p.primary,
                     topLeft = Offset(0f, cy - trackH / 2f),
                     size = Size(thumbX, trackH),
                     cornerRadius = CornerRadius(trackH / 2f),
                 )
-                // SpotiFLAC signature vertical bar thumb
                 val barW = 4.dp.toPx()
                 val barH = 16.dp.toPx()
                 drawRoundRect(
@@ -735,7 +693,6 @@ fun TimingTransportBar(
             style = MaterialTheme.typography.labelSmall,
         )
 
-        // Volume Down / % / Volume Up right on the timing bar
         VividPlayerIconButton(
             icon = PlayerIconKind.VolumeDown,
             contentDesc = "Bajar volumen",
@@ -791,10 +748,6 @@ fun TimingTransportBar(
     }
 }
 
-/**
- * SpotiFLAC Album Art & Backdrop Sleeve: renders the bundled artwork when available,
- * with SpotiFLAC dark atmospheric vignette and subtle soundwave accents.
- */
 @Composable
 fun SignalSleeve(modifier: Modifier) {
     val p = LocalPalette.current
@@ -866,13 +819,11 @@ fun PlayerDock(playback: Playback?, expand: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Row 1: THE TIMING BAR WITH EMBEDDED PLAYER & VOLUME BUTTONS (Always visible!)
             TimingTransportBar(
                 playback = playback,
                 compact = compact,
             )
 
-            // Row 2: SpotiFLAC Capsule Player Bar (`desktop_player_bar.dart` / `mini_player.dart`)
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,

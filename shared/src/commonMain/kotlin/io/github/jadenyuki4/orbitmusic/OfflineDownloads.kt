@@ -41,7 +41,7 @@ fun TrackDownloadButton(
         isDownloading -> {
             val pctText = progress?.let { "${(it * 100f).toInt()}%" } ?: "…"
             VividPillButton(
-                text = if (compact) "⏳ $pctText" else "⏳ Descargando $pctText (Cancelar)",
+                text = if (compact) "Descargando $pctText" else "Descargando $pctText (Cancelar)",
                 active = false,
                 accentColor = p.secondary,
                 onClick = { playback.cancelDownload(item.id) },
@@ -165,7 +165,7 @@ fun OfflineDownloadsPanel(
                     }
                     if (playback.canOpenDownloadsFolder()) {
                         VividPillButton(
-                            text = "📂 Abrir carpeta",
+                            text = "Abrir carpeta",
                             active = false,
                             accentColor = p.primary,
                             onClick = { playback.openDownloadsFolder() },
@@ -173,7 +173,7 @@ fun OfflineDownloadsPanel(
                     }
                     if (downloads.isNotEmpty()) {
                         TextButton(onClick = { confirmClear = true }) {
-                            Text("🗑 Vaciar descargas", color = p.error)
+                            Text("Vaciar descargas", color = p.error)
                         }
                     }
                 }
