@@ -174,7 +174,7 @@ fun ListeningStatsPanel(player: Playback) {
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "✦ TU RESUMEN Y ESTADÍSTICAS DE ESCUCHA",
+                        text = "TU RESUMEN Y ESTADÍSTICAS DE ESCUCHA",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = p.primary,

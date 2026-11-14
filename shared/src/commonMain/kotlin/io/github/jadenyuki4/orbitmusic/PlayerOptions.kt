@@ -8,11 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -63,7 +60,7 @@ fun SpotiFlacEqualizerCard(
             Modifier.fillMaxWidth().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // Top Row: Active Preset Title + Beta badge + 10 bands Preamp -6.0 dB + Switch
+
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -105,7 +102,6 @@ fun SpotiFlacEqualizerCard(
                 )
             }
 
-            // 10-Band Frequency Response Curve (`equalizer_curve.dart`)
             Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = Color(0xFF15171E),
@@ -116,7 +112,7 @@ fun SpotiFlacEqualizerCard(
                         Modifier.fillMaxWidth().height(136.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Left dB axis labels (+12, 0, -12)
+
                         Column(
                             Modifier.fillMaxHeight().padding(end = 8.dp),
                             verticalArrangement = Arrangement.SpaceBetween,
@@ -126,14 +122,13 @@ fun SpotiFlacEqualizerCard(
                             Text("0", style = MaterialTheme.typography.labelSmall, color = p.muted)
                             Text("-12", style = MaterialTheme.typography.labelSmall, color = p.muted)
                         }
-                        // Curve Canvas
+
                         Canvas(Modifier.weight(1f).fillMaxHeight()) {
                             val w = size.width
                             val h = size.height
                             val midY = h / 2f
                             val gridColor = p.muted.copy(alpha = 0.16f)
 
-                            // Horizontal grid lines (+12, +6, 0, -6, -12 dB)
                             listOf(0f, 0.25f, 0.5f, 0.75f, 1f).forEach { frac ->
                                 val y = h * frac
                                 drawLine(
@@ -143,7 +138,7 @@ fun SpotiFlacEqualizerCard(
                                     strokeWidth = 1.dp.toPx(),
                                 )
                             }
-                            // Vertical decade lines (100Hz, 1kHz, 10kHz)
+
                             listOf(0.18f, 0.52f, 0.86f).forEach { xFrac ->
                                 val x = w * xFrac
                                 drawLine(
@@ -219,7 +214,6 @@ fun SpotiFlacEqualizerCard(
                 }
             }
 
-            // Presets section from `equalizer_screen.dart`
             Text("Preajustes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = p.text)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(t.unit),
@@ -280,7 +274,6 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
     var sleepMenu by remember { mutableStateOf(false) }
     var speedsMenu by remember { mutableStateOf(false) }
 
-    // 1. SpotiFLAC Now Playing Expressive Transport (`showcase-dark.png` Screen 3)
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = p.surface,
@@ -421,7 +414,6 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
         }
     }
 
-    // 2. Volume Controls Card (`player_volume_control.dart` + Subir y Bajar Volumen)
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = p.surface,
@@ -474,13 +466,11 @@ fun PlayerOptions(player: Playback, item: MusicItem, compact: Boolean) {
         }
     }
 
-    // 3. SpotiFLAC 10-Band Equalizer Studio (`showcase-dark.png` Screen 4)
     SpotiFlacEqualizerCard(
         player = player,
         onSelectProfile = player::setSoundProfile,
     )
 
-    // 4. Audio Quality & Container Format Selector (`audio_quality_badges.dart`)
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = p.surface,
@@ -719,9 +709,6 @@ fun Discovery(player: Playback) {
     }
 }
 
-/**
- * Pantalla de Biblioteca en español con filtro de Descargadas Offline, Favoritas, Historial y Listas.
- */
 @Composable
 fun Library(player: Playback, onBrowseSearch: () -> Unit = {}) {
     val p = LocalPalette.current
@@ -744,7 +731,7 @@ fun Library(player: Playback, onBrowseSearch: () -> Unit = {}) {
             "Offline" to "↓ Offline ${downloads.size}",
             "Playlists" to "☰ Listas ${playlists.size}",
             "History" to "◷ Historial",
-            "Stats" to "📊 Estadísticas",
+            "Stats" to "Estadísticas",
         )
         tabs.forEach { (id, label) ->
             VividPillButton(
