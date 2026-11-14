@@ -18,4 +18,5 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 .tmp/
+.qa/
 desktopApp/resources/windows-x64/*.dll

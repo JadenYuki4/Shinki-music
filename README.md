@@ -1,6 +1,6 @@
 # Shinki music
 
-**Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá una canción en YouTube Music, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
+**Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá música en YouTube Music, YouTube, SoundCloud o Bandcamp, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
 
 **Aurora 5.3.1** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.1/Shinki-music-5.3.1.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.1/Shinki-music-5.3.1.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
@@ -13,6 +13,8 @@
 - **Actualizar la app.** En Ajustes, **Buscar actualizaciones** consulta la última versión pública de GitHub. **Ver descarga** abre la página donde elegís el instalador. **Copiar diagnóstico** reúne la versión y los datos técnicos para informar un problema.
 
 ## Diseño
+
+<img src="docs/images/aurora-android.png" alt="Interfaz de Shinki music en Android con una pista local de prueba" width="320">
 
 Shinki usa fondos oscuros, acentos violeta y cian y títulos geométricos. En el teléfono, la navegación queda abajo y el minirreproductor sigue a mano mientras explorás. En escritorio, la barra lateral deja espacio para la biblioteca y un panel de cola o letras. **Violet Void**, **Neon Cyan** y **Monochrome Light** son algunas de las paletas disponibles. En Ajustes podés regular el resplandor, la animación y el redondeo, o activar el modo de bajo consumo. Los cambios de apariencia se aplican a la sesión.
 
@@ -59,7 +61,7 @@ bash gradlew :desktopApp:run
 bash gradlew :desktopApp:packageDeb
 ```
 
-**Pruebas** · Ejecutá `.\gradlew.bat :shared:jvmTest :desktopApp:test` para la lógica compartida y escritorio. Con un dispositivo Android conectado, usá `:androidApp:connectedDebugAndroidTest`.
+**Pruebas** · Ejecutá `.\gradlew.bat :shared:jvmTest :shared:testAndroidHostTest :desktopApp:test` para la lógica compartida, Android host y escritorio. Con un dispositivo Android conectado, usá `:androidApp:connectedDebugAndroidTest`.
 
 ## Documentación y ediciones
 
