@@ -12,5 +12,9 @@ class BundledResourcesTest {
         backdrop.use {
             assertContentEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte()), it.readNBytes(2))
         }
+        val gifBackdrop = assertNotNull(javaClass.getResourceAsStream("/player_anime_gif_bg.jpg"))
+        gifBackdrop.use {
+            assertContentEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte()), it.readNBytes(2))
+        }
     }
 }

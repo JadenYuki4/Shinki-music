@@ -114,7 +114,7 @@ internal class NewPipeGateway : ExtractorGateway {
                 .filter { it.kind == MusicKind.Song && it.id != songId }
                 .distinctBy { it.id }
                 .take(24)
-        }.getOrDefault(emptyList())
+        }.onFailure { io.github.jadenyuki4.orbitmusic.logRelatedFailure(it) }.getOrDefault(emptyList())
         if (relatedTracks.isNotEmpty()) {
             synchronized(relatedLock) { relatedCache[songId] = relatedTracks }
         }
@@ -312,7 +312,15 @@ internal fun mapItem(item: InfoItem, requestedKind: MusicKind): MusicItem? {
         is PlaylistInfoItem -> item.uploaderName.orEmpty()
         else -> "Artist"
     }
-    return MusicItem(item.url, item.name, subtitle, kind,
-        item.thumbnails.minByOrNull { if (it.width > 0) kotlin.math.abs(it.width - 320) else Int.MAX_VALUE }?.url,
-        (item as? StreamInfoItem)?.duration?.takeIf { it >= 0 })
+    val bestThumbnail = item.thumbnails
+        .maxByOrNull { maxOf(it.width, 0) * maxOf(it.height, 0).coerceAtLeast(1) }?.url
+        ?: item.thumbnails.lastOrNull()?.url
+    return MusicItem(
+        item.url,
+        item.name,
+        subtitle,
+        kind,
+        bestThumbnail?.let { io.github.jadenyuki4.orbitmusic.upgradeArtworkUrl(it) },
+        (item as? StreamInfoItem)?.duration?.takeIf { it >= 0 },
+    )
 }

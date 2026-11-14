@@ -8,3 +8,7 @@ class AndroidPlatform : Platform {
 }
 
 actual fun getPlatform(): Platform = AndroidPlatform()
+internal actual val isAndroid: Boolean = true
+internal actual fun logRelatedFailure(cause: Throwable) {
+    android.util.Log.w("ShinkiRelated", "Error al obtener canciones relacionadas", cause)
+}

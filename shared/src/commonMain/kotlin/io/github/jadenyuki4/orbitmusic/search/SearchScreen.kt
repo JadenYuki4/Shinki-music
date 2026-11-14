@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package io.github.jadenyuki4.orbitmusic.search
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +52,28 @@ fun SearchScreen(
     val t = LocalLayout.current
     val focus = remember { FocusRequester() }
     val list = rememberLazyListState()
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val editing = isAndroid && WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+    fun dismissKeyboard() {
+        if (isAndroid) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
+    fun submit() {
+        dismissKeyboard()
+        controller.submit()
+    }
+    val dismissOnScroll = remember(focusManager, keyboard) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y != 0f) dismissKeyboard()
+                return Offset.Zero
+            }
+        }
+    }
+    LaunchedEffect(Unit) { if (!isAndroid) focus.requestFocus() }
     LaunchedEffect(state.query, state.kind, state.repository) { list.scrollToItem(0) }
 
     var contextualPicks by remember(state.submitted, state.query, state.items, favorites, plays, rules, state.incognito) {
@@ -66,7 +96,7 @@ fun SearchScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(t.medium), verticalArrangement = Arrangement.spacedBy(t.unit)) {
-        Row(
+        if (!editing) Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,7 +114,7 @@ fun SearchScreen(
             )
         }
 
-        Surface(
+        if (!editing) Surface(
             shape = RoundedCornerShape(22.dp),
             color = p.surface,
             border = BorderStroke(1.dp, p.primary.copy(alpha = 0.28f)),
@@ -97,12 +127,17 @@ fun SearchScreen(
         OutlinedTextField(
             value = state.query,
             onValueChange = controller::changeQuery,
-            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent { event ->
+                if (isAndroid && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                    if (event.type == KeyEventType.KeyUp) submit()
+                    true
+                } else false
+            },
             singleLine = true,
             shape = RoundedCornerShape(percent = 50),
             label = { Text("Buscá en Shinki music, YT Music, SoundCloud, Bandcamp o pegá un enlace…") },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { controller.submit() }),
+            keyboardActions = KeyboardActions(onSearch = { submit() }),
             trailingIcon = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -119,13 +154,13 @@ fun SearchScreen(
                         text = "⌕ Buscar",
                         active = state.query.isNotBlank() && !state.loading,
                         accentColor = p.primary,
-                        onClick = { if (state.query.isNotBlank() && !state.loading) controller.submit() },
+                        onClick = { if (state.query.isNotBlank() && !state.loading) { submit() } },
                     )
                 }
             },
         )
 
-        LazyRow(
+        if (!editing) LazyRow(
             horizontalArrangement = Arrangement.spacedBy(t.unit),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -148,7 +183,7 @@ fun SearchScreen(
             }
         }
 
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
+        if (!editing) LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
             items(MusicKind.entries, key = { it.name }) { kind ->
                 VividPillButton(
                     text = kind.pluralLabel(),
@@ -162,13 +197,13 @@ fun SearchScreen(
                 VividPillButton(
                     text = "✦ $tag",
                     accentColor = p.highlight,
-                    onClick = { controller.chooseSuggestion(tag) },
+                    onClick = { dismissKeyboard(); controller.chooseSuggestion(tag) },
                 )
             }
         }
 
         // Exactly one lazy scroll surface; at most 300 result rows are retained by the state owner.
-        LazyColumn(Modifier.weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(t.unit)) {
+        LazyColumn(Modifier.weight(1f).then(if (editing) Modifier.nestedScroll(dismissOnScroll) else Modifier), state = list, verticalArrangement = Arrangement.spacedBy(t.unit)) {
             if (!state.incognito && !state.submitted && state.query.isBlank() && state.history.isNotEmpty()) {
                 item("history-header") {
                     Row(
@@ -195,7 +230,7 @@ fun SearchScreen(
                     ) {
                         Row(
                             Modifier.fillMaxWidth()
-                                .clickable(onClickLabel = "Buscar de nuevo") { controller.chooseHistory(entry) }
+                                .clickable(onClickLabel = "Buscar de nuevo") { dismissKeyboard(); controller.chooseHistory(entry) }
                                 .padding(horizontal = t.small, vertical = t.unit),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(t.small),
@@ -225,7 +260,7 @@ fun SearchScreen(
                 }
             }
             items(state.suggestions, key = { "suggestion:$it" }) { suggestion ->
-                TextButton(onClick = { controller.chooseSuggestion(suggestion) }, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = { dismissKeyboard(); controller.chooseSuggestion(suggestion) }, modifier = Modifier.fillMaxWidth()) {
                     Text("⌕  $suggestion", Modifier.fillMaxWidth(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -257,7 +292,7 @@ fun SearchScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 color = p.primary,
                             )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
+                            if (!editing) LazyRow(horizontalArrangement = Arrangement.spacedBy(t.unit)) {
                                 items(contextualPicks, key = { "ctx:${it.item.id}" }) { pick ->
                                     Surface(
                                         color = p.surface,
@@ -266,7 +301,7 @@ fun SearchScreen(
                                     ) {
                                         Row(
                                             Modifier.width(248.dp)
-                                                .clickable { play(pick.item) }
+                                                .clickable { dismissKeyboard(); play(pick.item) }
                                                 .padding(t.unit),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(t.unit),
@@ -294,7 +329,7 @@ fun SearchScreen(
                 ) {
                     Row(
                         Modifier.fillMaxWidth()
-                            .clickable(enabled = item.kind == MusicKind.Song, onClickLabel = "Reproducir canción") { play(item) }
+                            .clickable(enabled = item.kind == MusicKind.Song, onClickLabel = "Reproducir canción") { dismissKeyboard(); play(item) }
                             .padding(t.small),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(t.small),
@@ -337,12 +372,12 @@ fun SearchScreen(
                                 text = "▶ Reproducir",
                                 active = true,
                                 accentColor = p.primary,
-                                onClick = { play(item) },
+                                onClick = { dismissKeyboard(); play(item) },
                             )
                             VividPillButton(
                                 text = "+ Cola",
                                 accentColor = p.secondary,
-                                onClick = { enqueue(item) },
+                                onClick = { dismissKeyboard(); enqueue(item) },
                             )
                             TrackDownloadButton(
                                 playback = playback,

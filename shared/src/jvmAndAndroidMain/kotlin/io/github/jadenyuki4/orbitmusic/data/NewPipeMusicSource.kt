@@ -93,7 +93,7 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
 
     override suspend fun related(songId: String): SourceResult<List<MusicItem>> {
         if (!songId.startsWith("https://")) return SourceResult.Failure(SourceError.InvalidRequest)
-        return guarded { gateway.related(songId).distinctBy { it.id } }
+        return guarded(onFailure = { io.github.jadenyuki4.orbitmusic.logRelatedFailure(it) }) { gateway.related(songId).distinctBy { it.id } }
     }
 
     override suspend fun stream(songId: String): SourceResult<AudioStream> =
@@ -137,7 +137,7 @@ internal fun sourceError(error: Exception): SourceError {
 /** One bounded retry for transient transport failures; cancellation never becomes an error. */
 private val sourceIo = Dispatchers.IO.limitedParallelism(2)
 
-private suspend fun <T> guarded(block: () -> T): SourceResult<T> {
+private suspend fun <T> guarded(onFailure: (Exception) -> Unit = {}, block: () -> T): SourceResult<T> {
     repeat(2) { attempt ->
         try { return SourceResult.Success(runInterruptible(sourceIo) { block() }) }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -147,7 +147,10 @@ private suspend fun <T> guarded(block: () -> T): SourceResult<T> {
             val transient = category == SourceError.Network &&
                 (error !is TransportFailure || error.status in 500..599)
             if (attempt == 0 && transient) delay(400)
-            else return SourceResult.Failure(category)
+            else {
+                onFailure(error)
+                return SourceResult.Failure(category)
+            }
         }
     }
     error("Unreachable retry state")

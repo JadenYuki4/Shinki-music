@@ -761,6 +761,7 @@ fun SignalSleeve(modifier: Modifier) {
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
             )
         }
         Canvas(Modifier.fillMaxSize()) {
@@ -956,4 +957,4 @@ private fun QualityFormatDropdown(
     }
 }
 
-private fun clock(seconds: Long) = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+internal fun clock(seconds: Long) = "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"

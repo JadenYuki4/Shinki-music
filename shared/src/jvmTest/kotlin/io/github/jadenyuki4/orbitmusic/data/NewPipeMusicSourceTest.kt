@@ -153,4 +153,26 @@ class NewPipeMusicSourceTest {
         assertEquals("application/x-mpegURL", chosen.mimeType)
         assertEquals("HLS", chosen.formatLabel)
     }
+
+    @Test fun mapItemPicksHighestResolutionThumbnailAndUpgradesArtworkUrls() {
+        val song = StreamInfoItem(0, "https://www.youtube.com/watch?v=example", "Song", StreamType.AUDIO_STREAM).apply {
+            uploaderName = "Artist"
+            thumbnails = listOf(
+                org.schabi.newpipe.extractor.Image("https://lh3.googleusercontent.com/cover=w60-h60-l90-rj", 60, 60, org.schabi.newpipe.extractor.Image.ResolutionLevel.LOW),
+                org.schabi.newpipe.extractor.Image("https://lh3.googleusercontent.com/cover=w544-h544-l90-rj", 544, 544, org.schabi.newpipe.extractor.Image.ResolutionLevel.HIGH),
+            )
+        }
+        assertEquals(
+            "https://lh3.googleusercontent.com/cover=w1080-h1080-l90-rj",
+            mapItem(song, MusicKind.Song)?.artworkUrl,
+        )
+        assertEquals(
+            "https://i1.sndcdn.com/artworks-123-t500x500.jpg",
+            io.github.jadenyuki4.orbitmusic.upgradeArtworkUrl("https://i1.sndcdn.com/artworks-123-large.jpg"),
+        )
+        assertEquals(
+            "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+            io.github.jadenyuki4.orbitmusic.upgradeArtworkUrl("https://i.ytimg.com/vi/abc/mqdefault.jpg?sqp=123"),
+        )
+    }
 }

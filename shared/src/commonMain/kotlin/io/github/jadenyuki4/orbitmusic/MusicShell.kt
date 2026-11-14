@@ -25,11 +25,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.map
 import io.github.jadenyuki4.orbitmusic.theme.*
 import io.github.jadenyuki4.orbitmusic.search.*
@@ -64,9 +68,24 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     val t = LocalLayout.current
     val p = LocalPalette.current
     val effects = LocalEffects.current
-    var destination by remember { mutableStateOf(Destination.Home) }
+    var destination by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(Destination.Home) }
     var panel by remember { mutableStateOf("Cola") }
-    var theater by remember { mutableStateOf(false) }
+    var theater by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var useGifPlayerBg by remember(playback) {
+        mutableStateOf(
+            if (playback != null) {
+                runCatching { com.russhwolf.settings.Settings().getBoolean("player.use_gif_bg", false) }.getOrDefault(false)
+            } else {
+                false
+            }
+        )
+    }
+    fun updateUseGifPlayerBg(enabled: Boolean) {
+        useGifPlayerBg = enabled
+        if (playback != null) {
+            runCatching { com.russhwolf.settings.Settings().putBoolean("player.use_gif_bg", enabled) }
+        }
+    }
     var showEqualizerOnHome by remember { mutableStateOf(true) }
     val track = playback.displayTrack()
 
@@ -78,6 +97,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     val activeFormat = playback?.audioFormat?.collectAsState()?.value ?: fallbackFormat
     val activeProfile = playback?.soundProfile?.collectAsState()?.value ?: fallbackProfile
 
+    val searchingWithIme = isAndroid && destination == Destination.Search && WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
     BoxWithConstraints(
         Modifier.fillMaxSize().background(p.background).safeDrawingPadding()
             .onPreviewKeyEvent { event ->
@@ -97,7 +117,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
         val showPanel = maxWidth >= t.panesBreakpoint && destination != Destination.Settings
 
         Column(Modifier.fillMaxSize()) {
-            Surface(color = Color(0xFF15171D)) {
+            if (!searchingWithIme) Surface(color = Color(0xFF15171D)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -248,29 +268,55 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                         )
                                         SpotiFlacQualityBadge("⋮", highlighted = false)
                                     }
-                                    Surface(
-                                        shape = RoundedCornerShape(28.dp),
-                                        color = p.elevated,
-                                        border = BorderStroke(1.dp, p.primary.copy(alpha = 0.25f)),
-                                        modifier = Modifier.widthIn(max = 360.dp),
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        TrackArt(track, Modifier.fillMaxWidth().aspectRatio(1f))
+                                        VividPillButton(
+                                            text = "Carátula HD",
+                                            active = !useGifPlayerBg,
+                                            accentColor = p.primary,
+                                            onClick = { updateUseGifPlayerBg(false) },
+                                        )
+                                        VividPillButton(
+                                            text = "✦ Fondo GIF animado",
+                                            active = useGifPlayerBg,
+                                            accentColor = Color(0xFFFF4AE2),
+                                            onClick = { updateUseGifPlayerBg(true) },
+                                        )
                                     }
-                                    Text(
-                                        track.title,
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = p.text,
-                                    )
-                                    Text(
-                                        track.subtitle,
-                                        color = p.muted,
-                                        style = MaterialTheme.typography.titleMedium,
-                                    )
-                                    SpotiFlacQualityBadge(
-                                        text = "✦ ${activeQuality.spotiFlacBadge}",
-                                        highlighted = true,
-                                    )
+                                    if (useGifPlayerBg) {
+                                        AnimeGifPlayerStage(
+                                            track = track,
+                                            playback = playback,
+                                            qualityBadge = "✦ ${activeQuality.spotiFlacBadge}",
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp),
+                                        )
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(28.dp),
+                                            color = p.elevated,
+                                            border = BorderStroke(1.dp, p.primary.copy(alpha = 0.25f)),
+                                            modifier = Modifier.widthIn(max = 380.dp),
+                                        ) {
+                                            TrackArt(track, Modifier.fillMaxWidth().aspectRatio(1f))
+                                        }
+                                        Text(
+                                            track.title,
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = p.text,
+                                        )
+                                        Text(
+                                            track.subtitle,
+                                            color = p.muted,
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        SpotiFlacQualityBadge(
+                                            text = "✦ ${activeQuality.spotiFlacBadge}",
+                                            highlighted = true,
+                                        )
+                                    }
                                     if (playback != null) PlayerOptions(playback, track, !showPanel)
                                 }
                             }
@@ -408,6 +454,9 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 ContinueListeningCard(
                                     playback = playback,
                                     track = track,
+                                    useGifPlayerBg = useGifPlayerBg,
+                                    onToggleGifBg = ::updateUseGifPlayerBg,
+                                    onOpenPlayer = { theater = true },
                                     onBrowse = { destination = Destination.Search },
                                 )
 
@@ -657,8 +706,8 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                 }
             }
             HorizontalDivider(color = p.muted.copy(alpha = 0.16f))
-            PlayerDock(playback) { theater = !theater }
-            if (!desktop) NavigationBar(containerColor = Color(0xFF14161C)) {
+            if (!searchingWithIme) PlayerDock(playback) { theater = !theater }
+            if (!desktop && !searchingWithIme) NavigationBar(containerColor = Color(0xFF14161C)) {
                 Destination.entries.forEach { page ->
                     NavigationBarItem(
                         selected = destination == page && !theater,
@@ -850,69 +899,279 @@ private fun VividNavItem(
 }
 
 @Composable
+private fun AnimeGifPlayerStage(
+    track: MusicItem,
+    playback: Playback?,
+    qualityBadge: String,
+    modifier: Modifier = Modifier,
+) {
+    val transportState = playback.displayTransport()
+    val duration = (transportState.duration.takeIf { it > 0L } ?: track.durationSeconds ?: 0L).coerceAtLeast(0L)
+    var dragging by remember(track.id) { mutableStateOf<Float?>(null) }
+    val currentPos = (dragging ?: transportState.position.coerceAtLeast(0L).toFloat()).toLong().coerceAtLeast(0L)
+    val neonPink = Color(0xFFFF4AE2)
+    val neonViolet = Color(0xFF9D4EDD)
+    val neonTitle = Color(0xFFFFF2FF)
+    val neonArtist = Color(0xFFF3A6FF)
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xFF0A0416),
+        border = BorderStroke(1.5.dp, Brush.linearGradient(listOf(neonPink.copy(alpha = 0.85f), neonViolet.copy(alpha = 0.75f)))),
+    ) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 390.dp)) {
+            AnimeGifBackdropCanvas(
+                playing = transportState.playing,
+                modifier = Modifier.matchParentSize(),
+                compactCard = false,
+            )
+            Surface(
+                modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
+                shape = RoundedCornerShape(percent = 50),
+                color = Color(0xCC1B0A38),
+                border = BorderStroke(1.dp, neonPink.copy(alpha = 0.65f)),
+            ) {
+                Text(
+                    text = qualityBadge,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = neonTitle,
+                )
+            }
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        shadow = Shadow(color = neonPink, offset = Offset.Zero, blurRadius = 18f),
+                        letterSpacing = 0.4.sp,
+                    ),
+                    fontWeight = FontWeight.ExtraBold,
+                    color = neonTitle,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track.subtitle,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        shadow = Shadow(color = neonViolet, offset = Offset.Zero, blurRadius = 10f),
+                    ),
+                    fontWeight = FontWeight.SemiBold,
+                    color = neonArtist,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (duration > 0L) {
+                    Slider(
+                        value = dragging ?: transportState.position.coerceIn(0L, duration).toFloat(),
+                        onValueChange = { dragging = it },
+                        onValueChangeFinished = {
+                            dragging?.let { playback?.seekTo(it.toLong()) }
+                            dragging = null
+                        },
+                        valueRange = 0f..duration.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFFFF88F3),
+                            activeTrackColor = neonPink,
+                            inactiveTrackColor = Color(0x6649217A),
+                        ),
+                        modifier = Modifier.fillMaxWidth().height(24.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        progress = { 0f },
+                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(percent = 50)),
+                        color = neonPink,
+                        trackColor = Color(0x6649217A),
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(clock(currentPos), style = MaterialTheme.typography.labelSmall, color = Color(0xFFEBD4FF))
+                    Text(
+                        if (duration > 0L) clock(duration) else "0:00",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFC8A6ED),
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        VividPlayerIconButton(
+                            icon = PlayerIconKind.Previous,
+                            contentDesc = "Canción anterior",
+                            size = 42.dp,
+                            onClick = { playback?.back() },
+                        )
+                        VividPlayerIconButton(
+                            icon = PlayerIconKind.Rewind10,
+                            contentDesc = "Retroceder 10 segundos",
+                            size = 38.dp,
+                            onClick = { playback?.seekBy(-10) },
+                        )
+                        VividPlayPauseButton(
+                            playing = transportState.playing,
+                            size = 56.dp,
+                            onClick = { playback?.playOrToggle() },
+                        )
+                        VividPlayerIconButton(
+                            icon = PlayerIconKind.Forward10,
+                            contentDesc = "Adelantar 10 segundos",
+                            size = 38.dp,
+                            onClick = { playback?.seekBy(10) },
+                        )
+                        VividPlayerIconButton(
+                            icon = PlayerIconKind.Next,
+                            contentDesc = "Siguiente canción",
+                            size = 42.dp,
+                            onClick = { playback?.next() },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ContinueListeningCard(
     playback: Playback?,
     track: MusicItem?,
+    useGifPlayerBg: Boolean,
+    onToggleGifBg: (Boolean) -> Unit,
+    onOpenPlayer: () -> Unit,
     onBrowse: () -> Unit,
 ) {
     val p = LocalPalette.current
     val transportState = playback.displayTransport()
+    val gifActive = useGifPlayerBg && track != null
+    val neonPink = Color(0xFFFF4AE2)
+    val neonViolet = Color(0xFF9D4EDD)
+    val duration = transportState.duration.takeIf { it > 0L } ?: track?.durationSeconds ?: 0L
+    val prog = if (duration > 0L) {
+        (transportState.position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = Color(0xFF2F4578),
-        border = BorderStroke(1.dp, p.primary.copy(alpha = 0.35f)),
+        color = if (gifActive) Color(0xFF0A0416) else Color(0xFF2F4578),
+        border = BorderStroke(
+            width = if (gifActive) 1.3.dp else 1.dp,
+            color = if (gifActive) neonPink.copy(alpha = 0.72f) else p.primary.copy(alpha = 0.35f),
+        ),
+        modifier = Modifier.fillMaxWidth().clickable {
+            if (track != null) onOpenPlayer() else onBrowse()
+        },
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF1F2D4F),
-                modifier = Modifier.size(84.dp),
-            ) {
-                TrackArt(track, Modifier.fillMaxSize())
+        Box(Modifier.fillMaxWidth()) {
+            if (gifActive) {
+                AnimeGifBackdropCanvas(
+                    playing = transportState.playing,
+                    modifier = Modifier.matchParentSize(),
+                    compactCard = true,
+                )
             }
             Column(
-                Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = track?.title ?: "Sin reproducción",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = track?.subtitle ?: "Elegí una canción para empezar",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFFD0DCFA),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                val duration = transportState.duration.takeIf { it > 0L } ?: track?.durationSeconds ?: 0L
-                val prog = if (duration > 0L) {
-                    (transportState.position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-                } else 0f
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (!gifActive) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFF1F2D4F),
+                            modifier = Modifier.size(84.dp),
+                        ) {
+                            TrackArt(track, Modifier.fillMaxSize())
+                        }
+                    }
+                    Column(
+                        Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        if (track != null) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(percent = 50),
+                                    color = if (gifActive) Color(0xCC210C42) else Color(0xFF1F2D4F),
+                                    border = BorderStroke(1.dp, (if (gifActive) neonPink else p.primary).copy(alpha = 0.55f)),
+                                    modifier = Modifier.clickable { onToggleGifBg(!useGifPlayerBg) },
+                                ) {
+                                    Text(
+                                        text = if (gifActive) "✦ Fondo GIF · Cambiar a HD" else "Carátula HD · Usar GIF",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (gifActive) Color(0xFFFFD8FC) else Color(0xFFD8E4FF),
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = track?.title ?: "Sin reproducción",
+                            style = if (gifActive) {
+                                MaterialTheme.typography.titleLarge.copy(
+                                    shadow = Shadow(color = neonPink, offset = Offset.Zero, blurRadius = 14f),
+                                    letterSpacing = 0.3.sp,
+                                )
+                            } else {
+                                MaterialTheme.typography.titleLarge
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = if (gifActive) Color(0xFFFFF2FF) else Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = track?.subtitle ?: "Elegí una canción para empezar",
+                            style = if (gifActive) {
+                                MaterialTheme.typography.bodyMedium.copy(
+                                    shadow = Shadow(color = neonViolet, offset = Offset.Zero, blurRadius = 8f),
+                                )
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            color = if (gifActive) Color(0xFFF3A6FF) else Color(0xFFD0DCFA),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    SpotiFlacScallopPlayButton(
+                        playing = transportState.playing,
+                        size = 56.dp,
+                        onClick = {
+                            if (playback != null && track != null) playback.playOrToggle()
+                            else onBrowse()
+                        },
+                    )
+                }
                 LinearProgressIndicator(
                     progress = { prog },
                     modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(percent = 50)),
-                    color = p.primary,
-                    trackColor = Color(0xFF1E2D52),
+                    color = if (gifActive) neonPink else p.primary,
+                    trackColor = if (gifActive) Color(0x6649217A) else Color(0xFF1E2D52),
                 )
             }
-            SpotiFlacScallopPlayButton(
-                playing = transportState.playing,
-                size = 56.dp,
-                onClick = {
-                    if (playback != null && track != null) playback.playOrToggle()
-                    else onBrowse()
-                },
-            )
         }
     }
 }

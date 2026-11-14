@@ -6,3 +6,5 @@ class JVMPlatform: Platform {
 }
 
 actual fun getPlatform(): Platform = JVMPlatform()
+internal actual val isAndroid: Boolean = false
+internal actual fun logRelatedFailure(cause: Throwable) = Unit

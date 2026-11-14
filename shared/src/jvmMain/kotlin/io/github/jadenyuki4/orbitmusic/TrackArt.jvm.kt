@@ -13,7 +13,15 @@ private val cachedAnimeBackdrop: ImageBitmap? by lazy {
     }.getOrNull()
 }
 
+private val cachedPlayerAnimeGifBackdrop: ImageBitmap? by lazy {
+    runCatching {
+        val bytes = playerAnimeGifBytes() ?: return@runCatching null
+        Image.makeFromEncoded(bytes).use { it.toComposeImageBitmap() }
+    }.getOrNull()
+}
+
 internal actual fun loadAnimeBackdrop(): ImageBitmap? = cachedAnimeBackdrop
+internal actual fun loadPlayerAnimeGifBackdrop(): ImageBitmap? = cachedPlayerAnimeGifBackdrop
 
 internal actual suspend fun loadArt(url: String): ImageBitmap? = withContext(Dispatchers.Default) {
     val bytes = artBytes(url) ?: return@withContext null
@@ -21,7 +29,7 @@ internal actual suspend fun loadArt(url: String): ImageBitmap? = withContext(Dis
         val reader = ImageIO.getImageReaders(input).asSequence().firstOrNull() ?: return@withContext null
         try {
             reader.input = input
-            if (maxOf(reader.getWidth(0), reader.getHeight(0)) !in 1..1024) return@withContext null
+            if (maxOf(reader.getWidth(0), reader.getHeight(0)) !in 1..4096) return@withContext null
         } finally { reader.dispose() }
     }
     Image.makeFromEncoded(bytes).use { it.toComposeImageBitmap() }

@@ -6,3 +6,5 @@ interface Platform {
 }
 
 expect fun getPlatform(): Platform
+internal expect val isAndroid: Boolean
+internal expect fun logRelatedFailure(cause: Throwable)
