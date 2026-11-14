@@ -9,7 +9,6 @@ import android.content.Intent
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
@@ -54,35 +53,44 @@ class PlaybackService : MediaSessionService() {
             .setDataSourceFactory(DefaultDataSource.Factory(this, httpFactory))
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setDeviceVolumeControlEnabled(true)
             .setAudioAttributes(audio, true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .setHandleAudioBecomingNoisy(true)
             .build()
-        val settings = (application as OrbitApplication).playback.equalizerState
+        val playback = (application as OrbitApplication).playback
+        val settings = playback.equalizerState
         fun attach(id: Int) {
             effect?.release()
             effect = if (id > 0) runCatching { Equalizer(0, id) }.getOrNull() else null
             applyBands(settings.value)
         }
         player.addListener(object : Player.Listener {
+            override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) {
+                val max = player.deviceInfo.maxVolume
+                if (max > 0) (playback.engine as AndroidEngine).reportDeviceVolume(if (muted) 0f else volume.toFloat() / max, playback)
+            }
+
             override fun onAudioSessionIdChanged(audioSessionId: Int) = attach(audioSessionId)
         })
         attach(player.audioSessionId)
         scope.launch { settings.collect { applyBands(it) } }
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val queuePlayer = object : ForwardingPlayer(player) {
-            private val orbit get() = (application as OrbitApplication).playback
-            override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands().buildUpon()
-                .add(Player.COMMAND_SEEK_TO_NEXT).add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                .add(Player.COMMAND_SEEK_TO_PREVIOUS).add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM).build()
-            override fun isCommandAvailable(command: Int) = availableCommands.contains(command)
-            override fun seekToNext() = orbit.next()
-            override fun seekToNextMediaItem() = orbit.next()
-            override fun seekToPrevious() = orbit.back()
-            override fun seekToPreviousMediaItem() = orbit.back()
+        val queuePlayer = SessionQueuePlayer(player, playback)
+        scope.launch { playback.queue.collect { queuePlayer.queueChanged() } }
+        val callback = object : MediaSession.Callback {
+            override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+                if (controller.packageName != packageName && !controller.isTrusted) return MediaSession.ConnectionResult.reject()
+                val commands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon().addAll(
+                    Player.COMMAND_SET_DEVICE_VOLUME, Player.COMMAND_ADJUST_DEVICE_VOLUME,
+                    Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS, Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
+                ).build()
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                    .setAvailablePlayerCommands(commands).build()
+            }
         }
-        session = MediaSession.Builder(this, queuePlayer).setSessionActivity(open).build()
+        session = MediaSession.Builder(this, queuePlayer).setSessionActivity(open).setCallback(callback).build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session

@@ -288,10 +288,11 @@ class Playback(
     fun playFromSearch(item: MusicItem) {
         if (item.kind != MusicKind.Song) return
         refillJob?.cancel()
-        manualQueueIds.clear()
+        val manual = if (isAndroid) queue.value.filter { it.id in manualQueueIds && it.id != item.id } else emptyList()
+        manualQueueIds.retainAll(manual.map { it.id }.toSet())
         autoQueueActive = true
         autoQueueSeed = item
-        queue.value = listOf(item)
+        queue.value = listOf(item) + manual.take(99)
         visited.clear()
         previous.clear()
         select(item)

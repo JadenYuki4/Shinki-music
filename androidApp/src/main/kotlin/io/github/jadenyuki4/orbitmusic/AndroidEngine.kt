@@ -18,12 +18,25 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
     private var lastLoadedStream: AudioStream? = null
     private var tick: Job? = null
     private var disconnected = false
-    private var targetVolume: Float = 1f
+    private var targetVolume: Float? = null
+    private var reportingDeviceVolume = false
+
+    internal fun reportDeviceVolume(value: Float, playback: Playback) {
+        reportingDeviceVolume = true
+        try {
+            playback.setVolume(value)
+        } finally {
+            reportingDeviceVolume = false
+        }
+    }
+
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             refresh(player)
-            tick?.cancel()
-            if (player.isPlaying) tick = scope.launch {
+            if (!player.isPlaying) {
+                tick?.cancel()
+                tick = null
+            } else if (tick?.isActive != true) tick = scope.launch {
                 while (isActive) {
                     delay(1000)
                     refresh(player)
@@ -35,8 +48,10 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
 
     init { connect() }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun connect() {
         val next = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java)))
+            .setAllowDeviceVolumeCommandsForLocalPlayback(true)
             .setListener(object : MediaController.Listener {
                 override fun onDisconnected(controller: MediaController) {
                     if (!disconnected && this@AndroidEngine.controller === controller) {
@@ -52,7 +67,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             if (!disconnected) try {
                 val player = next.get()
                 controller = player
-                player.volume = targetVolume
+                targetVolume?.let { volume(it) }
                 player.addListener(listener)
                 refresh(player)
                 pending?.let { (track, stream, pos) -> loadAt(track, stream, pos) }
@@ -121,7 +136,6 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
                     .build()
             )
         if (effectiveMime != null) builder.setMimeType(effectiveMime)
-        player.volume = targetVolume
         player.setMediaItem(builder.build(), seconds.coerceAtLeast(0L) * 1000L)
         player.prepare()
         player.play()
@@ -130,7 +144,13 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
         if (!value.isFinite()) return
         val clamped = value.coerceIn(0f, 1f)
         targetVolume = clamped
-        controller?.volume = clamped
+        if (reportingDeviceVolume) return
+        val player = controller ?: return
+        val maximum = player.deviceInfo.maxVolume
+        if (maximum <= 0) return
+        val level = kotlin.math.round(clamped * maximum).toInt()
+        if (player.deviceVolume != level) player.setDeviceVolume(level, 0)
+        if (player.isDeviceMuted && level > 0) player.setDeviceMuted(false, 0)
     }
     override fun speed(value: Float) { controller?.setPlaybackSpeed(value) }
     override fun toggle() {
