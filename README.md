@@ -4,7 +4,7 @@
 
 **Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá música en YouTube Music, YouTube, SoundCloud o Bandcamp, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
 
-**Aurora 5.3.4** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.4/Shinki-music-5.3.4.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.4/Shinki-music-5.3.4.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
+**Aurora 5.3.5** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.5/Shinki-music-5.3.5.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.5/Shinki-music-5.3.5.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
 ## Escuchar a tu manera
 
@@ -35,7 +35,7 @@ La distribución del escritorio toma como referencia a [Limusic](https://github.
 
 ## Compilar desde el código
 
-Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.4 ofrece APK y MSI. Para Linux podés compilar desde el código.
+Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.5 ofrece APK y MSI. Para Linux podés compilar desde el código.
 
 **Android** · En Windows, con un teléfono o emulador conectado:
 
@@ -80,6 +80,7 @@ bash gradlew :desktopApp:packageDeb
 | Aurora · reanudación de sesión | 5.3.1, compilación 169 |
 | Aurora · reproducción y cola automática | 5.3.3, compilación 171 |
 | Aurora · icono de Shinki music | 5.3.4, compilación 172 |
+| Aurora · buscador y controles multimedia | 5.3.5, compilación 173 |
 
 ## Licencia y uso
 
