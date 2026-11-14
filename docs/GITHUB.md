@@ -28,4 +28,4 @@ La edición Aurora combina una interfaz oscura con acentos violeta y cian, tarje
 
 El repositorio ya sirve como proyecto de portfolio. El README reúne funciones, diseño, captura de Android, tecnologías, compilación y licencia. Un tablero de GitHub Projects puede servir para organizar pendientes; no hace falta crear otro repositorio para presentar la aplicación.
 
-La versión pública consultada durante esta revisión es [Aurora 5.3.1](https://github.com/JadenYuki4/Shinki-music/releases/tag/v5.3.1). La 5.3.3 sigue siendo una versión local en revisión. Linux necesita validación real y la firma de distribución de Android y Windows sigue pendiente. Esas comprobaciones deben figurar como pendientes en la presentación.
+La [última versión pública](https://github.com/JadenYuki4/Shinki-music/releases/latest) incluye el APK para Android y el instalador MSI para Windows x64. El APK usa el mismo certificado Android Debug que la versión 5.3.1. El MSI se distribuye sin firma Authenticode. La validación en Linux real sigue pendiente.
