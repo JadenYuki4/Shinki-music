@@ -69,9 +69,9 @@ internal fun mediaKeys(playback: Playback, scope: CoroutineScope): Job = scope.l
                             when (method) {
                                 "Next" -> scope.launch { playback.next() }
                                 "Previous" -> scope.launch { playback.back() }
-                                "PlayPause" -> engine.toggle()
-                                "Play" -> if (!engine.state.value.playing) engine.toggle()
-                                "Pause" -> if (engine.state.value.playing) engine.toggle()
+                                "PlayPause" -> scope.launch { engine.toggle() }
+                                "Play" -> scope.launch { if (!engine.state.value.playing) engine.toggle() }
+                                "Pause" -> scope.launch { if (engine.state.value.playing) engine.toggle() }
                             }
                         } }
                         if (continuation.isActive) continuation.resume(Unit)

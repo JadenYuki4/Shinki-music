@@ -91,6 +91,11 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
         return guarded { MusicPage(gateway.trending().distinctBy { it.id }.take(pageSize)) }
     }
 
+    override suspend fun related(songId: String): SourceResult<List<MusicItem>> {
+        if (!songId.startsWith("https://")) return SourceResult.Failure(SourceError.InvalidRequest)
+        return guarded { gateway.related(songId).distinctBy { it.id } }
+    }
+
     override suspend fun stream(songId: String): SourceResult<AudioStream> =
         stream(songId, AudioQuality.High, AudioFormatPreference.Auto)
 

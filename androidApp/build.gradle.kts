@@ -15,6 +15,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk)
     implementation(project(":shared"))
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
     implementation("androidx.media3:media3-session:1.11.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("junit:junit:4.13.2")

@@ -77,8 +77,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
     var panel by remember { mutableStateOf("Cola") }
     var theater by remember { mutableStateOf(false) }
     var showEqualizerOnHome by remember { mutableStateOf(true) }
-    val transportState = playback.displayTransport()
-    val track = transportState.track
+    val track = playback.displayTrack()
 
     var fallbackQuality by remember { mutableStateOf(AudioQuality.High) }
     var fallbackFormat by remember { mutableStateOf(AudioFormatPreference.Auto) }
@@ -311,7 +310,7 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                 enqueue = { playback?.enqueue(it) },
                                 playNext = { playback?.playNext(it) },
                                 playback = playback,
-                                play = { playback?.playFrom(it, search.controller.state.value.items) },
+                                play = { playback?.playFromSearch(it) },
                             )
                             Destination.Library.name -> Column(
                                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(t.medium),
@@ -425,63 +424,11 @@ fun MusicShell(search: SearchViewModel, playback: Playback?, appearance: @Compos
                                     fontWeight = FontWeight.Bold,
                                     color = p.text,
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(28.dp),
-                                    color = Color(0xFF2F4578),
-                                    border = BorderStroke(1.dp, p.primary.copy(alpha = 0.35f)),
-                                ) {
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(20.dp),
-                                            color = Color(0xFF1F2D4F),
-                                            modifier = Modifier.size(84.dp),
-                                        ) {
-                                            TrackArt(track, Modifier.fillMaxSize())
-                                        }
-                                        Column(
-                                            Modifier.weight(1f),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                                        ) {
-                                            Text(
-                                                text = track?.title ?: "Sin reproducción",
-                                                style = MaterialTheme.typography.titleLarge,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Text(
-                                                text = track?.subtitle ?: "Elegí una canción para empezar",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = Color(0xFFD0DCFA),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                            Spacer(Modifier.height(4.dp))
-                                            val prog = if (transportState.duration > 0L) {
-                                                (transportState.position.toFloat() / transportState.duration.toFloat()).coerceIn(0f, 1f)
-                                            } else 0f
-                                            LinearProgressIndicator(
-                                                progress = { prog },
-                                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(percent = 50)),
-                                                color = p.primary,
-                                                trackColor = Color(0xFF1E2D52),
-                                            )
-                                        }
-                                        SpotiFlacScallopPlayButton(
-                                            playing = transportState.playing,
-                                            size = 56.dp,
-                                            onClick = {
-                                                if (playback != null && track != null) playback.playOrToggle()
-                                                else destination = Destination.Search
-                                            },
-                                        )
-                                    }
-                                }
+                                ContinueListeningCard(
+                                    playback = playback,
+                                    track = track,
+                                    onBrowse = { destination = Destination.Search },
+                                )
 
                                 // 4. "Shortcuts" 2x2 Expressive Grid (`home_tab_intro.dart` & `showcase-dark.png` Screen 1)
                                 Text(
@@ -933,6 +880,74 @@ private fun VividNavItem(
                 color = textColor,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ContinueListeningCard(
+    playback: Playback?,
+    track: MusicItem?,
+    onBrowse: () -> Unit,
+) {
+    val p = LocalPalette.current
+    val transportState = playback.displayTransport()
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xFF2F4578),
+        border = BorderStroke(1.dp, p.primary.copy(alpha = 0.35f)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF1F2D4F),
+                modifier = Modifier.size(84.dp),
+            ) {
+                TrackArt(track, Modifier.fillMaxSize())
+            }
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = track?.title ?: "Sin reproducción",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = track?.subtitle ?: "Elegí una canción para empezar",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFD0DCFA),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                val duration = transportState.duration.takeIf { it > 0L } ?: track?.durationSeconds ?: 0L
+                val prog = if (duration > 0L) {
+                    (transportState.position.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                } else 0f
+                LinearProgressIndicator(
+                    progress = { prog },
+                    modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(percent = 50)),
+                    color = p.primary,
+                    trackColor = Color(0xFF1E2D52),
+                )
+            }
+            SpotiFlacScallopPlayButton(
+                playing = transportState.playing,
+                size = 56.dp,
+                onClick = {
+                    if (playback != null && track != null) playback.playOrToggle()
+                    else onBrowse()
+                },
             )
         }
     }

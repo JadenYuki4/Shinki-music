@@ -165,6 +165,10 @@ data class MusicItem(
     val kind: MusicKind,
     val artworkUrl: String? = null,
     val durationSeconds: Long? = null,
+    val isrc: String? = null,
+    val musicBrainzId: String? = null,
+    val genres: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
 ) {
     val repositoryBadge: String
         get() = when {
@@ -202,6 +206,7 @@ interface MusicSource {
         set(_) {}
 
     suspend fun lyrics(item: MusicItem): SourceResult<String?> = SourceResult.Success(null)
+    suspend fun related(songId: String): SourceResult<List<MusicItem>> = SourceResult.Success(emptyList())
     suspend fun suggestions(query: String): SourceResult<List<String>>
     suspend fun search(query: String, kind: MusicKind?, page: String? = null,
         pageSize: Int = 30): SourceResult<MusicPage>

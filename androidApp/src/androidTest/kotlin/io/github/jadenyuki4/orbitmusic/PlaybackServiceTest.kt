@@ -71,6 +71,13 @@ class PlaybackServiceTest {
                 engine.state.first { !it.playing }
                 withContext(Dispatchers.Main) { engine.seek(8) }
                 engine.state.first { it.position >= 8 }
+                withContext(Dispatchers.Main) {
+                    engine.toggle()
+                    engine.seek(19)
+                }
+                engine.state.first { it.ended }
+                withContext(Dispatchers.Main) { engine.seek(5) }
+                engine.state.first { !it.ended && it.position in 5..12 }
                 Unit
             }
         } finally {

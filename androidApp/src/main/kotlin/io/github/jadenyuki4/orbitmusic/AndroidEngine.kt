@@ -14,8 +14,11 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
     override val state = MutableStateFlow(Transport())
     private var controller: MediaController? = null
     private var pending: Triple<MusicItem, AudioStream, Long>? = null
+    private var lastLoadedTrack: MusicItem? = null
+    private var lastLoadedStream: AudioStream? = null
     private var tick: Job? = null
     private var disconnected = false
+    private var targetVolume: Float = 1f
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             refresh(player)
@@ -49,6 +52,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             if (!disconnected) try {
                 val player = next.get()
                 controller = player
+                player.volume = targetVolume
                 player.addListener(listener)
                 refresh(player)
                 pending?.let { (track, stream, pos) -> loadAt(track, stream, pos) }
@@ -62,16 +66,37 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
 
     private fun refresh(player: Player) {
         val item = player.currentMediaItem
-        val track = item?.let { MusicItem(it.mediaId, it.mediaMetadata.title.toString(),
-            it.mediaMetadata.artist?.toString().orEmpty(), MusicKind.Song, it.mediaMetadata.artworkUri?.toString(),
-            player.duration.takeIf { length -> length > 0 }?.div(1000)) }
-        state.value = Transport(track, player.playWhenReady && player.playbackState != Player.STATE_ENDED,
-            player.currentPosition.coerceAtLeast(0) / 1000, player.duration.coerceAtLeast(0) / 1000,
-            player.playerError?.let { "Audio no disponible. Reintentá para solicitar una transmisión nueva." }, player.playbackState == Player.STATE_ENDED)
+        val knownDuration = player.duration.takeIf { it > 0L }?.div(1000L)
+            ?: lastLoadedTrack?.takeIf { it.id == item?.mediaId }?.durationSeconds
+            ?: state.value.takeIf { it.track?.id == item?.mediaId }?.duration?.takeIf { it > 0L }
+            ?: 0L
+        val track = item?.let {
+            MusicItem(
+                id = it.mediaId,
+                title = it.mediaMetadata.title?.toString().orEmpty(),
+                subtitle = it.mediaMetadata.artist?.toString().orEmpty(),
+                kind = MusicKind.Song,
+                artworkUrl = it.mediaMetadata.artworkUri?.toString(),
+                durationSeconds = knownDuration.takeIf { length -> length > 0L },
+            )
+        }
+        player.playerError?.let { err ->
+            android.util.Log.e("AndroidEngine", "ExoPlayer error [${err.errorCodeName}]: ${err.message}", err)
+        }
+        state.value = Transport(
+            track = track,
+            playing = player.playWhenReady && player.playbackState != Player.STATE_ENDED,
+            position = player.currentPosition.coerceAtLeast(0L) / 1000L,
+            duration = knownDuration,
+            error = player.playerError?.let { "Audio no disponible. Reintentá para solicitar una transmisión nueva." },
+            ended = player.playbackState == Player.STATE_ENDED,
+        )
     }
 
     override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
     override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
+        lastLoadedTrack = track
+        lastLoadedStream = stream
         val player = controller
         if (player == null) {
             pending = Triple(track, stream, seconds)
@@ -80,13 +105,33 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
         }
         val mediaUri = if (stream.url.contains("://")) android.net.Uri.parse(stream.url)
         else android.net.Uri.fromFile(java.io.File(stream.url))
-        player.setMediaItem(MediaItem.Builder().setMediaId(track.id).setUri(mediaUri).setMimeType(stream.mimeType)
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.subtitle)
-                .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse)).build()).build(), seconds * 1000)
+        val effectiveMime = if (stream.url.contains(".m3u8", ignoreCase = true)) {
+            MimeTypes.APPLICATION_M3U8
+        } else {
+            stream.mimeType.takeIf { it.isNotBlank() }
+        }
+        val builder = MediaItem.Builder()
+            .setMediaId(track.id)
+            .setUri(mediaUri)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.subtitle)
+                    .setArtworkUri(track.artworkUrl?.let(android.net.Uri::parse))
+                    .build()
+            )
+        if (effectiveMime != null) builder.setMimeType(effectiveMime)
+        player.volume = targetVolume
+        player.setMediaItem(builder.build(), seconds.coerceAtLeast(0L) * 1000L)
         player.prepare()
         player.play()
     }
-    override fun volume(value: Float) { controller?.volume = value }
+    override fun volume(value: Float) {
+        if (!value.isFinite()) return
+        val clamped = value.coerceIn(0f, 1f)
+        targetVolume = clamped
+        controller?.volume = clamped
+    }
     override fun speed(value: Float) { controller?.setPlaybackSpeed(value) }
     override fun toggle() {
         controller?.run {
@@ -94,7 +139,24 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             else if (playWhenReady) pause() else play()
         }
     }
-    override fun seek(seconds: Long) { controller?.seekTo(seconds * 1000) }
+    override fun seek(seconds: Long) {
+        val targetSeconds = seconds.coerceAtLeast(0L)
+        val player = controller
+        if (player == null) {
+            pending = pending?.copy(third = targetSeconds)
+            return
+        }
+        val wasEnded = player.playbackState == Player.STATE_ENDED
+        player.seekTo(targetSeconds * 1000L)
+        if (wasEnded) {
+            player.prepare()
+            player.play()
+        } else if (player.playbackState == Player.STATE_IDLE && lastLoadedTrack != null && lastLoadedStream != null) {
+            loadAt(lastLoadedTrack!!, lastLoadedStream!!, targetSeconds)
+            return
+        }
+        state.value = state.value.copy(position = targetSeconds, ended = false)
+    }
     fun close() {
         disconnected = true
         tick?.cancel()

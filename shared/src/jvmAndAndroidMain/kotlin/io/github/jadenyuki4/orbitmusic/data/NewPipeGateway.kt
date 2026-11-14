@@ -7,6 +7,14 @@ import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory as Filters
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+
+private val searchExecutor = Executors.newFixedThreadPool(4) { runnable ->
+    Thread(runnable, "shinki-search-${searchThreadCounter.incrementAndGet()}").apply { isDaemon = true }
+}
+private val searchThreadCounter = AtomicInteger(0)
 
 internal data class ExtractedPage(val items: List<MusicItem>, val next: Page? = null)
 
@@ -25,6 +33,7 @@ internal interface ExtractorGateway {
     ): AudioStream? = stream(songId)
     fun suggestions(query: String): List<String>
     fun search(query: String, kind: MusicKind, page: Page?): ExtractedPage
+    fun related(songId: String): List<MusicItem> = emptyList()
 }
 
 private object ExtractorRuntime {
@@ -35,6 +44,10 @@ private object ExtractorRuntime {
 internal class NewPipeGateway : ExtractorGateway {
     @Volatile
     override var repository: MusicRepository = MusicRepository.All
+    private val relatedLock = Any()
+    private val relatedCache = object : LinkedHashMap<String, List<MusicItem>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MusicItem>>?) = size > 32
+    }
 
     override fun trending(): List<MusicItem> {
         ExtractorRuntime.ready
@@ -66,6 +79,7 @@ internal class NewPipeGateway : ExtractorGateway {
         val service = runCatching { NewPipe.getServiceByUrl(songId) }.getOrDefault(ServiceList.YouTube)
         val extractor = service.getStreamExtractor(songId)
         extractor.fetchPage()
+        cacheRelated(songId, extractor)
         val allHttps = extractor.audioStreams.orEmpty().filter {
             it.isUrl && it.content.startsWith("https://")
         }
@@ -73,6 +87,38 @@ internal class NewPipeGateway : ExtractorGateway {
             it.deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.PROGRESSIVE_HTTP
         }.ifEmpty { allHttps }
         return selectStream(progressive, quality, format)
+    }
+
+    override fun related(songId: String): List<MusicItem> {
+        synchronized(relatedLock) {
+            relatedCache[songId]?.let { return it }
+        }
+        ExtractorRuntime.ready
+        val service = runCatching { NewPipe.getServiceByUrl(songId) }.getOrDefault(ServiceList.YouTube)
+        val extractor = service.getStreamExtractor(songId)
+        extractor.fetchPage()
+        return cacheRelated(songId, extractor)
+    }
+
+    private fun cacheRelated(
+        songId: String,
+        extractor: org.schabi.newpipe.extractor.stream.StreamExtractor,
+    ): List<MusicItem> {
+        val items = runCatching {
+            val tags = runCatching { extractor.tags.orEmpty().take(6) }.getOrDefault(emptyList())
+            val genre = runCatching { extractor.category?.takeIf { it.isNotBlank() } }.getOrNull()
+            val genres = listOfNotNull(genre)
+            extractor.relatedItems?.items.orEmpty()
+                .filterIsInstance<StreamInfoItem>()
+                .mapNotNull { info -> mapItem(info, MusicKind.Song)?.copy(genres = genres, tags = tags) }
+                .filter { it.kind == MusicKind.Song && it.id != songId }
+                .distinctBy { it.id }
+                .take(24)
+        }.getOrDefault(emptyList())
+        if (items.isNotEmpty()) {
+            synchronized(relatedLock) { relatedCache[songId] = items }
+        }
+        return items
     }
 
     override fun suggestions(query: String): List<String> {
@@ -134,33 +180,30 @@ internal class NewPipeGateway : ExtractorGateway {
                 .getOrThrow()
         }
 
+        val specs: List<Pair<Int, () -> ExtractedPage>> = listOf(
+            20 to { searchYouTubeMusic(query, kind, null) },
+            25 to { searchYouTubeFull(query, kind, null) },
+            15 to { searchService(ServiceList.SoundCloud, query, kind, null) },
+            10 to { searchService(ServiceList.Bandcamp, query, kind, null) },
+        )
+        val futures = specs.map { (_, fetch) ->
+            CompletableFuture.supplyAsync({ runCatching(fetch) }, searchExecutor)
+        }
+
         val results = mutableListOf<List<MusicItem>>()
         var nextPage: Page? = null
         var lastError: Throwable? = null
 
-        // 1. YouTube Music official catalog
-        runCatching { searchYouTubeMusic(query, kind, null) }
-            .onSuccess {
-                results += it.items.take(20)
-                if (nextPage == null) nextPage = it.next
+        futures.forEachIndexed { idx, future ->
+            val outcome = future.join()
+            val limit = specs[idx].first
+            outcome.onSuccess {
+                results += it.items.take(limit)
+                if (idx < 2 && nextPage == null) nextPage = it.next
+            }.onFailure { err ->
+                if (idx == 0 || (idx == 1 && lastError == null)) lastError = err
             }
-            .onFailure { lastError = it }
-
-        // 2. YouTube Complete Video Catalog (captures all songs, anime OSTs, covers, remixes, live versions missing in YT Music)
-        runCatching { searchYouTubeFull(query, kind, null) }
-            .onSuccess {
-                results += it.items.take(25)
-                if (nextPage == null) nextPage = it.next
-            }
-            .onFailure { if (lastError == null) lastError = it }
-
-        // 3. SoundCloud Repository
-        runCatching { searchService(ServiceList.SoundCloud, query, kind, null) }
-            .onSuccess { results += it.items.take(15) }
-
-        // 4. Bandcamp Repository
-        runCatching { searchService(ServiceList.Bandcamp, query, kind, null) }
-            .onSuccess { results += it.items.take(10) }
+        }
 
         val merged = interleaveLists(results).distinctBy { it.id }.take(80)
         if (merged.isEmpty() && lastError != null) throw lastError
@@ -233,12 +276,18 @@ internal fun selectStream(
     } ?: return null
 
     val bitrate = chosen.averageBitrate.takeIf { it > 0 } ?: quality.targetBitrateKbps
-    val mime = chosen.format?.mimeType ?: when (format) {
-        AudioFormatPreference.M4A -> "audio/mp4"
-        AudioFormatPreference.MP3 -> "audio/mpeg"
-        else -> "audio/webm"
+    val isHls = chosen.deliveryMethod == org.schabi.newpipe.extractor.stream.DeliveryMethod.HLS ||
+        chosen.content.contains(".m3u8", ignoreCase = true)
+    val mime = if (isHls) {
+        "application/x-mpegURL"
+    } else {
+        chosen.format?.mimeType ?: when (format) {
+            AudioFormatPreference.M4A -> "audio/mp4"
+            AudioFormatPreference.MP3 -> "audio/mpeg"
+            else -> "audio/webm"
+        }
     }
-    val fmtLabel = chosen.format?.suffix?.uppercase() ?: format.shortLabel
+    val fmtLabel = if (isHls) "HLS" else chosen.format?.suffix?.uppercase() ?: format.shortLabel
     val bytesPerMin = (bitrate.toLong() * 1000L / 8L) * 60L
     return AudioStream(
         url = chosen.content,

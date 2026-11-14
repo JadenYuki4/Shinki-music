@@ -1,93 +1,80 @@
-# Shinki music de JadenYuki4
+# Shinki music
 
-Una app para escuchar musica y que tenga mis delirios.
+**Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá una canción en YouTube Music, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
 
-En **Ajustes** podés buscar la última versión estable en GitHub Releases, copiar un diagnóstico local y editar preferencias de artistas, grupos y géneros. Los Me gusta de canciones se administran en Favoritos. El bloqueo de géneros depende del texto disponible en el título o la búsqueda. La versión y el número de compilación se definen en `gradle.properties`.
+**Aurora 5.3.1** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.1/Shinki-music-5.3.1.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.1/Shinki-music-5.3.1.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
-Personal, open-source, ad-free music player foundation for Android, Linux and Windows, using Kotlin + Compose Multiplatform. The primary UX reference is [Limusic v1.3.0](https://github.com/SimoHypers/limusic/releases/tag/v1.3.0), as selected by the user.
+## Escuchar a tu manera
 
-Search songs, albums, artists and playlists, then select a song to play it. Android uses Media3, and Linux and Windows use libmpv. The responsive cyberpunk player includes a persistent transport, seek bar, expandable player and editable theme presets. The wide layout retains Limusic’s sidebar and right panel.
+- **Seguir escuchando.** Al volver a abrir Shinki, la última canción aparece en pausa en el punto guardado. Tocá Reproducir para continuar. La cola admite reproducción aleatoria, repetición y temporizador de sueño.
+- **Descubrir música.** Las búsquedas, escuchas y canciones que marcás con Me gusta alimentan las recomendaciones locales. En Ajustes podés elegir artistas favoritos, pedir menos sugerencias o bloquear artistas, grupos y géneros. Podés quitar las reglas cuando quieras. El filtro de género usa el texto disponible en el título o en la búsqueda.
+- **Organizar tu biblioteca.** «Agregado recientemente» reúne tus últimos 12 Me gusta. Podés guardar canciones para escuchar sin conexión, crear listas locales, respaldarlas en JSON o intercambiarlas en M3U8.
+- **Controlar el sonido.** El reproductor incluye ecualizador, velocidad y letras sincronizadas cuando están disponibles. Android ofrece reproducción en segundo plano y controles en la pantalla de bloqueo. En escritorio tenés teclas multimedia y bandeja del sistema.
+- **Actualizar la app.** En Ajustes, **Buscar actualizaciones** consulta la última versión pública de GitHub. **Ver descarga** abre la página donde elegís el instalador. **Copiar diagnóstico** reúne la versión y los datos técnicos para informar un problema.
 
-Theme edits are session-only. Full custom token editing, theme JSON, art-derived colors, custom backgrounds and preference persistence arrive in (e). Desktop OS reduced-motion detection is also pending; the app's explicit toggle works on all targets. Android reads the animator preference at launch and on resume. NewPipe initializes lazily on the first request.
+## Diseño
 
-## Ediciones
+Shinki usa fondos oscuros, acentos violeta y cian y títulos geométricos. En el teléfono, la navegación queda abajo y el minirreproductor sigue a mano mientras explorás. En escritorio, la barra lateral deja espacio para la biblioteca y un panel de cola o letras. **Violet Void**, **Neon Cyan** y **Monochrome Light** son algunas de las paletas disponibles. En Ajustes podés regular el resplandor, la animación y el redondeo, o activar el modo de bajo consumo. Los cambios de apariencia se aplican a la sesión.
 
-| Versión | Nombre de edición |
+La distribución del escritorio toma como referencia a [Limusic](https://github.com/SimoHypers/limusic/releases/tag/v1.3.0). Los créditos de los componentes y diseños adaptados están en [NOTICE.md](NOTICE.md).
+
+## Herramientas
+
+| Parte del reproductor | Tecnología y función |
 | --- | --- |
-| 1.0 (versión inicial de Android) | Origen |
-| 5.2.7 | Pulso |
-| 5.2.8 | Órbita |
-| 5.3.0 (compilación 168) | Aurora |
-| 5.3.1 (compilación 169) | Aurora · reanudación de sesión |
+| Interfaz y lógica compartidas | Kotlin Multiplatform y Compose Multiplatform para pantallas, estado y controles. |
+| Fuentes de música | NewPipe Extractor detrás de la interfaz `MusicSource`, que separa los proveedores de las pantallas. |
+| Audio en Android | Media3 y ExoPlayer con un servicio de reproducción y una sesión multimedia. |
+| Audio en escritorio | libmpv integrado desde la JVM mediante JNA. |
+| Datos locales | SQLDelight con SQLite para la biblioteca y el historial. Multiplatform Settings para preferencias y sesión. |
+| Arquitectura y distribución | Koin para inyección de dependencias, corutinas y Flow para el estado. Gradle y GitHub Actions para compilar. R8 reduce el APK y jlink recorta el entorno Java de escritorio. |
 
-Los nombres de las ediciones anteriores son retrospectivos. Las etiquetas y descargas publicadas conservan sus números originales.
+## Compilar desde el código
 
-## Project documentation
+Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.1 ofrece APK y MSI. Para Linux podés compilar desde el código.
 
-- [Queue controls, discovery algorithm, playlists and validation](docs/PHASE_D.md)
-
-- [Plan, architecture, folder structure and phase gates](docs/ARCHITECTURE.md)
-- [Every direct dependency: versions, exact Gradle lines and size rationale](docs/DEPENDENCIES.md)
-- [Phase (b): data architecture, added dependencies and test instructions](docs/PHASE_B.md)
-- [Phase (c): playback, native dependencies and validation](docs/PHASE_C.md)
-- [Resolved Desktop dependency tree](docs/desktop-runtime-dependencies.txt) and [Android tree](docs/android-runtime-dependencies.txt)
-- [Validation, size report and performance checklist](docs/VALIDATION.md)
-- [Limusic design reference and scope](docs/DESIGN_REFERENCE.md)
-- [License notice](NOTICE.md) and [full GPLv3 text](LICENSE)
-
-Complete source files are in the workspace; no pseudocode or manual copy step is required. Shared code lives in `shared/src/commonMain/kotlin/io/github/jadenyuki4/orbitmusic`, with Android/Desktop entry points in their respective modules. See the architecture document's file index.
-
-## Prerequisites
-
-Use Android Studio with Kotlin Multiplatform support, Android SDK platform 37, and a full JDK 21 as the Gradle runtime. Desktop code targets JDK 17; Gradle's Foojay resolver can provision its compiler toolchain. Native packaging needs a full JDK with `jmods`, `jlink`, and `jpackage`; some Android Studio JBR distributions omit `jmods`. Set `JAVA_HOME` to that full JDK. Windows MSI packaging uses WiX (the Compose plugin provisions it here). Android supports API 26+.
-
-Do not commit `local.properties`. Let Android Studio create it with your SDK path, or set `ANDROID_HOME`. The Gradle wrapper pins its distribution and SHA-256. Commands below run from the repository root. On Windows use PowerShell and `.\gradlew.bat`; on Linux use `./gradlew` (run `chmod +x gradlew` if the checkout lost its executable bit).
-
-## Android
+**Android** · En Windows, con un teléfono o emulador conectado:
 
 ```powershell
-.\gradlew.bat :androidApp:assembleDebug
-.\gradlew.bat :androidApp:installDebug
-.\gradlew.bat :androidApp:assembleRelease
+.\gradlew.bat :androidApp:assembleDebug :androidApp:installDebug
 ```
 
-Use an attached device/emulator for installDebug, or run androidApp in Android Studio. APKs appear under `androidApp/build/outputs/apk/`. Release is R8-minified/resource-shrunk and **unsigned**; sign with your own key before installation/distribution. No keystore or secret is embedded.
+Para generar la variante optimizada usá `:androidApp:assembleRelease`. Gradle deja el APK sin firmar en `androidApp/build/outputs/apk/release/`. El APK publicado ya está firmado.
 
-## Windows 10/11 desktop
+**Windows 10/11 x64** · Prepará libmpv, ejecutá el reproductor o generá el MSI:
 
 ```powershell
 .\scripts\prepare-libmpv.ps1
 .\gradlew.bat :desktopApp:run
-.\gradlew.bat :desktopApp:createDistributable
 .\gradlew.bat :desktopApp:packageMsi
 ```
 
-The portable app image is in `desktopApp/build/compose/binaries/main/app/OrbitMusic/`; the MSI is in `desktopApp/build/compose/binaries/main/msi/`. The app image includes its jlink-trimmed runtime, so users do not need Java installed. MSI installation has not been tested on a clean VM yet.
+El instalador se genera en `desktopApp/build/shinki-music-dist/main/msi/`.
 
-## Linux desktop
+**Linux** · En una distribución compatible con estos paquetes:
 
 ```sh
-sudo apt install libmpv2 python3-gi gir1.2-glib-2.0
-./gradlew :desktopApp:run
-./gradlew :desktopApp:createDistributable
-./gradlew :desktopApp:packageDeb
+sudo apt install libmpv2 python3-gi gir1.2-glib-2.0 fakeroot
+bash gradlew :desktopApp:run
+bash gradlew :desktopApp:packageDeb
 ```
 
-Build on Linux with a graphical X11/Wayland-compatible desktop and the native packaging prerequisites from your distribution (including `fakeroot` for DEB tooling where required). Output is in `desktopApp/build/compose/binaries/main/deb/`. Linux native packages cannot be built by the Windows host. AppImage tooling and the GitHub Actions Android/Linux/Windows artifact matrix are scheduled for phase (f); no AppImage is claimed in (a).
+**Pruebas** · Ejecutá `.\gradlew.bat :shared:jvmTest :desktopApp:test` para la lógica compartida y escritorio. Con un dispositivo Android conectado, usá `:androidApp:connectedDebugAndroidTest`.
 
-## Tests
+## Documentación y ediciones
 
-```powershell
-.\gradlew.bat :shared:jvmTest :androidApp:assembleDebug :androidApp:assembleRelease :desktopApp:classes
-.\gradlew.bat :desktopApp:suggestModules
-```
+- [Arquitectura y estructura](docs/ARCHITECTURE.md) · [Dependencias y versiones](docs/DEPENDENCIES.md)
+- [Fuentes e historial](docs/PHASE_B.md) · [Motores de audio](docs/PHASE_C.md) · [Biblioteca y recomendaciones](docs/PHASE_D.md)
+- [Referencia de diseño](docs/DESIGN_REFERENCE.md) · [Validación y rendimiento](docs/VALIDATION.md)
 
-Run common theme/controller tests and JVM data-adapter tests, then follow the manual/profiling checklist. Normal tests skip the real-network test. To opt in: `.\gradlew.bat :shared:jvmTest --tests '*LiveSourceSmokeTest' -PorbitLive=true`. No CPU, RAM or cold-start claim is made from compilation alone.
+| Edición | Versión |
+| --- | --- |
+| Origen | 1.0, versión inicial de Android |
+| Pulso | 5.2.7 |
+| Órbita | 5.2.8 |
+| Aurora | 5.3.0, compilación 168 |
+| Aurora · reanudación de sesión | 5.3.1, compilación 169 |
 
-## Intended use and disclaimer
+## Licencia y uso
 
-This project is intended for personal and educational use. Third-party YouTube Music access may violate YouTube's Terms of Service. It is not affiliated with, endorsed by, or sponsored by YouTube or Google. It must not circumvent DRM, harvest credentials, or bypass paid-subscription restrictions. Respect applicable service terms and content rights.
-
-Licensed under **GPL-3.0-or-later**, as chosen by the project owner. The intended-use statement does not restrict the rights granted by the GPL. Third-party components retain their licenses; see the Phase (b) dependency/license notes for the extractor.
-
-Open a track from the bottom player for shuffle, repeat, speed, volume, sleep timer, lyrics and recommendation autoplay. Home adapts to recent searches, listens and favorites. Library manages playlists, JSON exchange, incognito and history removal.
+Proyecto personal y educativo bajo [GPL-3.0-or-later](LICENSE). El acceso a YouTube Music mediante un cliente de terceros puede incumplir los términos de servicio de YouTube. Shinki es independiente de YouTube y Google. No permite eludir DRM, obtener credenciales ni saltarse suscripciones de pago. Los componentes de terceros conservan sus licencias y atribuciones. [Créditos](NOTICE.md)

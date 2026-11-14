@@ -86,6 +86,9 @@ class MpvEngineTest {
                     engine.toggle()
                     engine.state.first { it.playing }
                     assertNull(engine.state.first { !it.playing }.error)
+                    engine.seek(2)
+                    val restarted = engine.state.first { it.playing && !it.ended && it.position >= 2 }
+                    assertNull(restarted.error)
                 }
             }
         } finally { clip.delete() }

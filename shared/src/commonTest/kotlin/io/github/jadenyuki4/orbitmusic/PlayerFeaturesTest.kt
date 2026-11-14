@@ -268,4 +268,211 @@ class PlayerFeaturesTest {
         assertNull(player.history.getDownload(a.id))
         assertEquals(listOf("/offline/A.m4a"), deletedPaths)
     }
+
+    @Test fun seekOnRestoredSessionAndRetryPreserveTargetPosition() = runTest {
+        val engine = object : AudioEngine {
+            override val state = MutableStateFlow(Transport())
+            val loadStarts = mutableListOf<Long>()
+            val seekTargets = mutableListOf<Long>()
+            override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
+            override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
+                loadStarts += seconds
+                state.value = Transport(track, playing = true, position = seconds, duration = 200)
+            }
+            override fun toggle() { state.value = state.value.copy(playing = !state.value.playing) }
+            override fun seek(seconds: Long) { seekTargets += seconds }
+            override fun volume(value: Float) {}
+            override fun speed(value: Float) {}
+        }
+        val player = Playback(source, engine, backgroundScope)
+        val restoredTrack = a.copy(durationSeconds = 200)
+        player.restoreSession(
+            SavedPlaybackSession(
+                queue = listOf(restoredTrack),
+                currentTrackId = restoredTrack.id,
+                positionSeconds = 45,
+                shuffle = false,
+                repeat = RepeatMode.Off,
+                quality = AudioQuality.High,
+                format = AudioFormatPreference.Auto,
+                profile = SoundProfile.AnimeOST,
+            )
+        )
+
+        player.seekTo(90)
+        runCurrent()
+
+        assertEquals(listOf(90L), engine.loadStarts)
+        assertEquals(90L, engine.state.value.position)
+
+        // Rapid seekBy calls accumulate before async engine state updates position.
+        player.seekBy(10)
+        player.seekBy(10)
+        player.seekBy(10)
+        assertEquals(listOf(100L, 110L, 120L), engine.seekTargets)
+
+        engine.state.value = engine.state.value.copy(position = 77)
+        player.retry()
+        runCurrent()
+        assertEquals(listOf(90L, 77L), engine.loadStarts)
+    }
+
+    @Test fun normalizeTrackTitleAndDeduplicateVariants() {
+        val seed = MusicItem("yt:seed1", "Bohemian Rhapsody", "Queen", MusicKind.Song)
+        val live = MusicItem("yt:var1", "Bohemian Rhapsody (Live at Wembley)", "Queen - Topic", MusicKind.Song)
+        val officialVideo = MusicItem("yt:var2", "Bohemian Rhapsody - Official Video", "Queen", MusicKind.Song)
+        val remix = MusicItem("yt:var3", "Bohemian Rhapsody [Remix 2024]", "Queen", MusicKind.Song)
+        val accented = MusicItem("other:1", "Café & Tea (Sped Up)", "Yôasobi feat. Guest", MusicKind.Song)
+        val accentedPlain = MusicItem("other:2", "Cafe & Tea [Acoustic]", "Yoasobi", MusicKind.Song)
+        val sameIsrcA = MusicItem("srcA:1", "Night Dancer", "imase", MusicKind.Song, isrc = "JPB602200123")
+        val sameIsrcB = MusicItem("srcB:9", "Night Dancer Nightcore", "imase", MusicKind.Song, isrc = "JPB602200123")
+
+        assertEquals("bohemian rhapsody", normalizeTrackTitle(live.title, live.subtitle))
+        assertEquals("bohemian rhapsody", normalizeTrackTitle(officialVideo.title, officialVideo.subtitle))
+        assertEquals("bohemian rhapsody", normalizeTrackTitle(remix.title, remix.subtitle))
+        assertTrue(isSameTrackVariant(seed, live))
+        assertTrue(isSameTrackVariant(seed, officialVideo))
+        assertTrue(isSameTrackVariant(seed, remix))
+        assertTrue(isSameTrackVariant(accented, accentedPlain))
+        assertTrue(isSameTrackVariant(sameIsrcA, sameIsrcB))
+
+        val ranked = rankAndSelectAutoQueueBatch(
+            candidates = listOf(live, officialVideo, remix, accented, accentedPlain, sameIsrcA, sameIsrcB),
+            seedTrack = seed,
+            queueItems = listOf(seed),
+            plays = emptyList(),
+            favorites = emptyList(),
+            batchSize = 6,
+        )
+        assertTrue(ranked.none { isSameTrackVariant(seed, it) })
+        assertEquals(1, ranked.count { it.isrc == "JPB602200123" })
+        assertEquals(1, ranked.count { it.id == accented.id || it.id == accentedPlain.id })
+    }
+
+    @Test fun autoQueueScoringOrdersByWeightsLimitsStreakAndPreservesManualQueue() = runTest {
+        val seed = MusicItem("seed", "Tracing Stars", "YOASOBI", MusicKind.Song, genres = listOf("jpop"))
+        val candFavAndHabit = MusicItem("fav1", "Into The Night", "YOASOBI", MusicKind.Song, genres = listOf("jpop"))
+        val candSameArtist2 = MusicItem("same2", "Idol", "YOASOBI", MusicKind.Song, genres = listOf("jpop"))
+        val candSameArtist3 = MusicItem("same3", "Monster", "YOASOBI", MusicKind.Song, genres = listOf("jpop"))
+        val candRelated = MusicItem("rel1", "Kaikai Kitan", "Eve", MusicKind.Song, genres = listOf("jpop"))
+        val candSkippedArtist = MusicItem("skipArt", "Noise Track", "SkippedBand", MusicKind.Song, genres = listOf("jpop"))
+        val candDiscovery = MusicItem("disc1", "Midnight Walk", "Indie Duo", MusicKind.Song, genres = listOf("indie"))
+
+        val plays = listOf(
+            PlayEventRecord(1, MusicItem("p1", "Brave", "YOASOBI", MusicKind.Song), 200, 0.95, false, 1000L),
+            PlayEventRecord(2, MusicItem("p2", "Skipped Song", "SkippedBand", MusicKind.Song), 10, 0.05, true, 900L),
+        )
+        val favorites = listOf(MusicItem("f1", "Gunjou", "YOASOBI", MusicKind.Song))
+        val candidates = listOf(candSkippedArtist, candDiscovery, candRelated, candFavAndHabit, candSameArtist2, candSameArtist3)
+
+        val ordered = rankAndSelectAutoQueueBatch(
+            candidates = candidates,
+            seedTrack = seed,
+            queueItems = listOf(seed),
+            plays = plays,
+            favorites = favorites,
+            relatedIds = setOf(candRelated.id),
+            batchSize = 6,
+        )
+        assertTrue(ordered.indexOf(candFavAndHabit) < ordered.indexOf(candSkippedArtist))
+        for (i in 0..(ordered.size - 3)) {
+            val streak = listOf(ordered[i], ordered[i + 1], ordered[i + 2]).map { normalizeCanonicalArtist(it.subtitle) }
+            assertFalse(streak.all { it == streak.first() && it.isNotEmpty() }, "Found >2 consecutive same artist: $streak")
+        }
+
+        val coldStart = rankAndSelectAutoQueueBatch(
+            candidates = listOf(candDiscovery, candRelated, candFavAndHabit),
+            seedTrack = seed,
+            queueItems = listOf(seed),
+            plays = emptyList(),
+            favorites = emptyList(),
+            relatedIds = setOf(candRelated.id),
+            batchSize = 5,
+        )
+        assertTrue(coldStart.isNotEmpty())
+        assertEquals(listOf(candRelated.id, candFavAndHabit.id, candDiscovery.id), coldStart.map { it.id })
+
+        val autoSource = object : MusicSource {
+            private val catalog = listOf(
+                candFavAndHabit,
+                candRelated,
+                candDiscovery,
+                MusicItem("extra1", "Blue Horizon", "Artist One", MusicKind.Song, genres = listOf("jpop")),
+                MusicItem("extra2", "Neon Rain", "Artist Two", MusicKind.Song, genres = listOf("jpop")),
+                MusicItem("extra3", "Paper Plane", "Artist Three", MusicKind.Song, genres = listOf("jpop")),
+                MusicItem("extra4", "Silver Moon", "Artist Four", MusicKind.Song, genres = listOf("jpop")),
+            )
+            override suspend fun stream(songId: String) = SourceResult.Success(AudioStream("https://cdn/$songId.m4a", "audio/mp4"))
+            override suspend fun suggestions(query: String) = SourceResult.Success(emptyList<String>())
+            override suspend fun search(query: String, kind: MusicKind?, page: String?, pageSize: Int) =
+                SourceResult.Success(MusicPage(catalog))
+            override suspend fun discover(page: String?, pageSize: Int) = SourceResult.Success(MusicPage(catalog))
+            override suspend fun related(songId: String) = SourceResult.Success(listOf(candRelated, candFavAndHabit))
+        }
+        val engine = Engine()
+        val player = Playback(autoSource, engine, backgroundScope)
+        val variantOfSeed = MusicItem("seed-live", "Tracing Stars (Live)", "YOASOBI", MusicKind.Song)
+        player.playFromSearch(seed)
+        runCurrent()
+        assertFalse(player.queue.value.any { it.id == variantOfSeed.id })
+        assertTrue(player.queue.value.size in 6..11)
+
+        val manual = MusicItem("manual-1", "User Pick", "Custom Artist", MusicKind.Song)
+        player.playNext(manual)
+        assertEquals(manual.id, player.queue.value[1].id)
+        player.next()
+        runCurrent()
+        assertEquals(manual.id, engine.state.value.track?.id)
+    }
+
+    @Test fun volumeAndMutePersistWithDebounceAndRestoreBeforeFirstLoad() = runTest {
+        val settings = com.russhwolf.settings.MapSettings()
+        val store = SessionStore(settings)
+        val volumeEvents = mutableListOf<String>()
+        fun recordingEngine() = object : AudioEngine {
+            override val state = MutableStateFlow(Transport())
+            override fun load(track: MusicItem, stream: AudioStream) {
+                volumeEvents += "load:${track.id}"
+                state.value = Transport(track, playing = true, duration = 200)
+            }
+            override fun toggle() {}
+            override fun seek(seconds: Long) {}
+            override fun volume(value: Float) { volumeEvents += "vol:$value" }
+            override fun speed(value: Float) {}
+        }
+
+        val firstPlayer = Playback(source, recordingEngine(), backgroundScope)
+        firstPlayer.persistSession(backgroundScope, store)
+        runCurrent()
+        firstPlayer.setVolume(0.42f)
+        advanceTimeBy(600)
+        runCurrent()
+
+        val restoredPlayer = Playback(source, recordingEngine(), backgroundScope)
+        val saved = store.load()
+        assertNotNull(saved)
+        assertEquals(0.42f, saved.volume, 0.01f)
+        assertFalse(saved.muted)
+        volumeEvents.clear()
+        restoredPlayer.restoreSession(saved)
+        restoredPlayer.playFrom(a, listOf(a))
+        runCurrent()
+        val firstVolIdx = volumeEvents.indexOfFirst { it.startsWith("vol:0.42") }
+        val firstLoadIdx = volumeEvents.indexOfFirst { it == "load:A" }
+        assertTrue(firstVolIdx >= 0 && firstVolIdx < firstLoadIdx, "Expected restored volume before load: $volumeEvents")
+
+        restoredPlayer.toggleMute()
+        val mutedSnapshot = restoredPlayer.snapshotSession()
+        assertTrue(mutedSnapshot.muted)
+        assertEquals(0.42f, mutedSnapshot.volume, 0.01f)
+        store.save(mutedSnapshot)
+
+        val thirdPlayer = Playback(source, recordingEngine(), backgroundScope)
+        thirdPlayer.restoreSession(store.load()!!)
+        assertTrue(thirdPlayer.muted.value)
+        assertEquals(0f, thirdPlayer.volume.value, 0.01f)
+        thirdPlayer.toggleMute()
+        assertFalse(thirdPlayer.muted.value)
+        assertEquals(0.42f, thirdPlayer.volume.value, 0.01f)
+    }
 }

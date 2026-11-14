@@ -40,12 +40,20 @@ class Playback(
     val history: HistoryStore = io.github.jadenyuki4.orbitmusic.data.InMemoryHistoryStore(),
     val downloader: TrackDownloader = NoOpTrackDownloader,
 ) {
-    internal val taste by lazy { TasteStore(com.russhwolf.settings.Settings()) }
+    internal val taste by lazy { TasteStore(runCatching { com.russhwolf.settings.Settings() }.getOrNull()) }
     internal val restored = MutableStateFlow<Transport?>(null)
     val queue = MutableStateFlow<List<MusicItem>>(emptyList())
     val shuffle = MutableStateFlow(false)
-    val autoplay = MutableStateFlow(false)
+    val autoplay = MutableStateFlow(true)
     private var radio: Job? = null
+    private var refillJob: Job? = null
+    private var autoQueueActive = false
+    private var autoQueueSeed: MusicItem? = null
+    private val manualQueueIds = mutableSetOf<String>()
+    private var trackedPlayTrack: MusicItem? = null
+    private var trackedPlayMaxPosition: Long = 0L
+    private var trackedPlayDuration: Long = 0L
+    private var trackedPlayEnded: Boolean = false
     val repeat = MutableStateFlow(RepeatMode.Off)
     val sleepMinutes = MutableStateFlow(0)
     val volume = MutableStateFlow(1f)
@@ -62,7 +70,30 @@ class Playback(
     }
     val currentStream = MutableStateFlow<AudioStream?>(null)
 
+    internal fun savedVolumeLevel(): Float =
+        if (muted.value || volume.value <= 0f) {
+            preMuteVolume.takeIf { it.isFinite() && it in 0.01f..1f } ?: 0.7f
+        } else {
+            volume.value.takeIf { it.isFinite() }?.coerceIn(0.01f, 1f) ?: 1f
+        }
+
+    internal fun restoreVolumeState(savedVolume: Float, isMuted: Boolean) {
+        val valid = savedVolume.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
+        if (isMuted || valid <= 0f) {
+            preMuteVolume = valid.takeIf { it > 0.01f } ?: 0.7f
+            muted.value = true
+            volume.value = 0f
+            engine.volume(0f)
+        } else {
+            preMuteVolume = valid
+            muted.value = false
+            volume.value = valid
+            engine.volume(valid)
+        }
+    }
+
     fun setVolume(value: Float) {
+        if (!value.isFinite()) return
         val clamped = value.coerceIn(0f, 1f)
         volume.value = clamped
         if (clamped > 0f) {
@@ -120,12 +151,54 @@ class Playback(
         engine.soundProfile(profile)
     }
 
-    fun seekBy(deltaSeconds: Long) {
+    private var pendingSeekSeconds: Long? = null
+    private var seekAnchorMark: kotlin.time.TimeMark? = null
+    private var seekAnchorTarget: Long = 0L
+
+    private fun currentTransport(): Transport {
         val cur = engine.state.value
-        if (cur.track == null) return
-        val maxPos = if (cur.duration > 0) cur.duration else Long.MAX_VALUE
-        val target = (cur.position + deltaSeconds).coerceIn(0L, maxPos)
+        if (cur.track != null) return cur
+        val saved = restored.value
+        if (saved?.track != null) return saved
+        return cur
+    }
+
+    /** Seeks to [seconds], supporting active playback, pending stream resolution, and restored sessions. */
+    fun seekTo(seconds: Long) {
+        val pendingTrack = pending.value
+        val cur = currentTransport()
+        val track = cur.track ?: pendingTrack ?: return
+        val maxPos = (cur.duration.takeIf { it > 0L } ?: track.durationSeconds)?.takeIf { it > 0L } ?: Long.MAX_VALUE
+        val target = seconds.coerceIn(0L, maxPos)
+        seekAnchorTarget = target
+        seekAnchorMark = kotlin.time.TimeSource.Monotonic.markNow()
+
+        if (pendingTrack?.id == track.id && engine.state.value.track?.id != track.id) {
+            pendingSeekSeconds = target
+            if (restored.value?.track?.id == track.id) {
+                restored.value = restored.value?.copy(position = target)
+            }
+            return
+        }
+        if (engine.state.value.track == null && restored.value?.track?.id == track.id) {
+            restored.value = restored.value?.copy(position = target)
+            select(track, target)
+            return
+        }
         engine.seek(target)
+    }
+
+    fun seekBy(deltaSeconds: Long) {
+        val cur = currentTransport()
+        val track = cur.track ?: pending.value ?: return
+        val basePos = if (seekAnchorMark?.elapsedNow()?.inWholeMilliseconds?.let { it < 800 } == true) {
+            seekAnchorTarget
+        } else {
+            cur.position
+        }
+        val maxPos = (cur.duration.takeIf { it > 0L } ?: track.durationSeconds)?.takeIf { it > 0L } ?: Long.MAX_VALUE
+        val target = (basePos + deltaSeconds).coerceIn(0L, maxPos)
+        seekTo(target)
     }
 
     fun playOrToggle() {
@@ -170,14 +243,17 @@ class Playback(
     private val previous = ArrayDeque<MusicItem>()
 
     fun enqueue(item: MusicItem) {
-        if (item.kind == MusicKind.Song && queue.value.none { it.id == item.id } && queue.value.size < 100)
+        if (item.kind == MusicKind.Song && queue.value.none { it.id == item.id } && queue.value.size < 100) {
+            manualQueueIds += item.id
             queue.value += item
+        }
     }
 
     fun playNext(item: MusicItem) {
         if (item.kind != MusicKind.Song) return
         val list = queue.value.filterNot { it.id == item.id }.toMutableList()
         if (list.size >= 100) return
+        manualQueueIds += item.id
         val currentId = engine.state.value.track?.id ?: lastRequest?.id
         val currentIdx = list.indexOfFirst { it.id == currentId }
         if (currentIdx >= 0 && currentIdx + 1 <= list.size) {
@@ -189,11 +265,18 @@ class Playback(
     }
 
     fun clearQueue() {
+        refillJob?.cancel()
+        manualQueueIds.clear()
+        autoQueueActive = false
+        autoQueueSeed = null
         val active = engine.state.value.track
         queue.value = if (active != null) listOf(active) else emptyList()
     }
 
-    fun remove(item: MusicItem) { queue.value = queue.value.filterNot { it.id == item.id } }
+    fun remove(item: MusicItem) {
+        manualQueueIds -= item.id
+        queue.value = queue.value.filterNot { it.id == item.id }
+    }
 
     fun move(item: MusicItem, offset: Int) {
         val list = queue.value.toMutableList()
@@ -203,8 +286,32 @@ class Playback(
         queue.value = list
     }
 
+    fun playFromSearch(item: MusicItem) {
+        if (item.kind != MusicKind.Song) return
+        refillJob?.cancel()
+        manualQueueIds.clear()
+        autoQueueActive = true
+        autoQueueSeed = item
+        queue.value = listOf(item)
+        visited.clear()
+        previous.clear()
+        select(item)
+        scheduleAutoQueueRefill(item)
+    }
+
     fun playFrom(item: MusicItem, list: List<MusicItem>) {
-        queue.value = (list.filter { it.kind == MusicKind.Song }.take(99) + item).distinctBy { it.id }
+        refillJob?.cancel()
+        manualQueueIds.clear()
+        val filtered = (list.filter { it.kind == MusicKind.Song }.take(99) + item).distinctBy { it.id }
+        if (filtered.size > 1) {
+            filtered.forEach { manualQueueIds += it.id }
+            autoQueueActive = false
+            autoQueueSeed = null
+        } else {
+            autoQueueActive = true
+            autoQueueSeed = item
+        }
+        queue.value = filtered
         visited.clear()
         previous.clear()
         select(item)
@@ -232,24 +339,83 @@ class Playback(
             return
         }
         if (current != null && current.id != target.id) {
+            if (!automatic) finalizeTrackedPlay(skipped = !trackedPlayEnded)
             previous.addLast(current)
             if (previous.size > 100) previous.removeFirst()
         }
         select(target)
+        val targetIndex = list.indexOfFirst { it.id == target.id }
+        val remainingAfterTarget = if (targetIndex >= 0) (list.lastIndex - targetIndex).coerceAtLeast(0) else 0
+        if (autoQueueActive && autoplay.value && !history.incognito.value &&
+            remainingAfterTarget <= RecommendationWeights.REFILL_THRESHOLD
+        ) {
+            scheduleAutoQueueRefill(target)
+        }
+    }
+
+    private fun scheduleAutoQueueRefill(seed: MusicItem?) {
+        refillJob?.cancel()
+        refillJob = scope.launch {
+            if (!autoplay.value || history.incognito.value || !autoQueueActive) return@launch
+            val result = autoQueueBatch(
+                source = source,
+                seedTrack = seed ?: autoQueueSeed,
+                queueItems = queue.value,
+                searches = history.observeRecentSearches(10).first(),
+                plays = history.observeRecentPlays(40).first(),
+                favorites = history.observeFavorites().first(),
+                batchSize = RecommendationWeights.BATCH_DEFAULT_SIZE,
+                rules = taste.rules.value,
+            )
+            ensureActive()
+            if (!autoQueueActive || !autoplay.value || history.incognito.value) return@launch
+            if (seed != null && autoQueueSeed != null && autoQueueSeed?.id != seed.id) return@launch
+            if (result is SourceResult.Success && result.value.isNotEmpty()) {
+                val existing = queue.value
+                val available = (100 - existing.size).coerceAtLeast(0)
+                if (available == 0) return@launch
+                val existingIds = existing.mapTo(mutableSetOf()) { it.id }
+                val toAdd = result.value.filter { cand ->
+                    cand.id !in existingIds && existing.none { isSameTrackVariant(it, cand) }
+                }.take(available)
+                if (toAdd.isNotEmpty()) {
+                    queue.value = existing + toAdd
+                }
+            }
+        }
     }
 
     private fun continueWithRecommendations(current: MusicItem?) {
         radio?.cancel()
         radio = scope.launch {
-            val result = recommendations(source, history.observeRecentSearches(8).first(),
-                history.observeRecentPlays(30).first(), history.observeFavorites().first(), rules = taste.rules.value)
+            val result = autoQueueBatch(
+                source = source,
+                seedTrack = current ?: autoQueueSeed,
+                queueItems = queue.value,
+                searches = history.observeRecentSearches(10).first(),
+                plays = history.observeRecentPlays(40).first(),
+                favorites = history.observeFavorites().first(),
+                batchSize = RecommendationWeights.BATCH_DEFAULT_SIZE,
+                rules = taste.rules.value,
+            )
             ensureActive()
             if (!autoplay.value || history.incognito.value || !engine.state.value.ended || engine.state.value.track?.id != current?.id) return@launch
             when (result) {
                 is SourceResult.Success -> {
-                    val ids = queue.value.mapTo(mutableSetOf()) { it.id }
-                    val fresh = result.value.map { it.item }.filter { it.id !in ids }
-                    if (fresh.isNotEmpty()) playFrom(fresh.first(), fresh)
+                    val existing = queue.value
+                    val ids = existing.mapTo(mutableSetOf()) { it.id }
+                    val fresh = result.value.filter { cand ->
+                        cand.id !in ids && existing.none { isSameTrackVariant(it, cand) }
+                    }
+                    if (fresh.isNotEmpty()) {
+                        autoQueueActive = true
+                        autoQueueSeed = fresh.first()
+                        val available = (100 - existing.size).coerceAtLeast(0)
+                        queue.value = (existing + fresh.take(available)).distinctBy { it.id }
+                        visited.clear()
+                        previous.clear()
+                        select(fresh.first())
+                    }
                 }
                 is SourceResult.Failure -> failure.value = result.error.userMessage()
             }
@@ -257,10 +423,12 @@ class Playback(
     }
 
     fun back() {
-        if (engine.state.value.position > 3) engine.seek(0)
+        val cur = currentTransport()
+        if (cur.position > 3) seekTo(0)
         else {
-            val target = previous.removeLastOrNull() ?: queue.value.getOrNull(queue.value.indexOfFirst { it.id == engine.state.value.track?.id } - 1)
-            if (target != null) select(target) else engine.seek(0)
+            val activeId = cur.track?.id
+            val target = previous.removeLastOrNull() ?: queue.value.getOrNull(queue.value.indexOfFirst { it.id == activeId } - 1)
+            if (target != null) select(target) else seekTo(0)
         }
     }
 
@@ -274,6 +442,7 @@ class Playback(
                 sleepMinutes.value--
             }
             radio?.cancel()
+            refillJob?.cancel()
             resolve?.cancel()
             pending.value = null
             if (engine.state.value.playing) engine.toggle()
@@ -287,6 +456,26 @@ class Playback(
     private var resolve: Job? = null
     private var lastRequest: MusicItem? = null
 
+    private fun finalizeTrackedPlay(skipped: Boolean) {
+        val previous = trackedPlayTrack ?: return
+        val maxPos = trackedPlayMaxPosition.coerceAtLeast(0L)
+        val duration = trackedPlayDuration.coerceAtLeast(1L)
+        val ratio = (maxPos.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0)
+        val effectiveEnded = trackedPlayEnded
+        val isSkipped = skipped && !effectiveEnded && ratio < 0.75
+        trackedPlayTrack = null
+        trackedPlayMaxPosition = 0L
+        trackedPlayDuration = 0L
+        trackedPlayEnded = false
+        if (maxPos > 0L || isSkipped || effectiveEnded) {
+            val finalRatio = if (effectiveEnded) maxOf(ratio, 0.95) else ratio
+            val playedSecs = if (effectiveEnded) maxOf(maxPos, duration) else maxPos
+            scope.launch {
+                history.recordPlay(previous, playedSecs, finalRatio, isSkipped)
+            }
+        }
+    }
+
     init {
         scope.launch {
             engine.state.map { it.track?.id to it.ended }.distinctUntilChanged().collect { (id, ended) ->
@@ -294,22 +483,44 @@ class Playback(
             }
         }
         scope.launch {
-            engine.state.filter { it.playing && it.error == null }.mapNotNull { it.track }
-                .distinctUntilChangedBy { it.id }.collect { item ->
-                    history.recordPlay(item, 0, 0.0, false)
+            engine.state.collect { transport ->
+                val active = transport.track
+                val currentTracked = trackedPlayTrack
+                if (active != null && transport.error == null && active.id != currentTracked?.id && transport.playing) {
+                    finalizeTrackedPlay(skipped = !trackedPlayEnded)
+                    trackedPlayTrack = active
+                    trackedPlayMaxPosition = transport.position
+                    trackedPlayDuration = maxOf(transport.duration, active.durationSeconds ?: 0L)
+                    trackedPlayEnded = transport.ended
+                    history.recordPlay(active, transport.position, 0.0, false)
+                } else if (active != null && active.id == currentTracked?.id) {
+                    trackedPlayMaxPosition = maxOf(trackedPlayMaxPosition, transport.position)
+                    trackedPlayDuration = maxOf(trackedPlayDuration, transport.duration, active.durationSeconds ?: 0L)
+                    if (transport.ended && !trackedPlayEnded) {
+                        trackedPlayEnded = true
+                        finalizeTrackedPlay(skipped = false)
+                    }
                 }
+            }
         }
     }
 
     fun select(track: MusicItem, resumePositionSeconds: Long = 0L) {
         if (track.kind != MusicKind.Song) return
+        if (trackedPlayTrack != null && trackedPlayTrack?.id != track.id && !trackedPlayEnded) {
+            finalizeTrackedPlay(skipped = true)
+        }
         radio?.cancel()
         resolve?.cancel()
+        if (autoQueueActive && track.id != autoQueueSeed?.id) {
+            autoQueueSeed = track
+        }
         enqueue(track)
         visited.add(track.id)
         if (track.id != restored.value?.track?.id) restored.value = null
         lastRequest = track
         pending.value = track
+        pendingSeekSeconds = if (resumePositionSeconds > 0L) resumePositionSeconds else null
         failure.value = null
         val reqQuality = audioQuality.value
         val reqFormat = audioFormat.value
@@ -323,8 +534,11 @@ class Playback(
                         bitrateKbps = offline.bitrateKbps,
                         formatLabel = offline.formatLabel?.let { "$it · OFFLINE" } ?: "OFFLINE",
                     )
+                    val startAt = pendingSeekSeconds ?: resumePositionSeconds
+                    pendingSeekSeconds = null
                     currentStream.value = localStream
-                    engine.loadAt(track, localStream, resumePositionSeconds)
+                    engine.volume(if (muted.value) 0f else volume.value)
+                    engine.loadAt(track, localStream, startAt)
                     engine.soundProfile(soundProfile.value)
 
                     return@launch
@@ -336,8 +550,11 @@ class Playback(
                 ensureActive()
                 when (result) {
                     is SourceResult.Success -> {
+                        val startAt = pendingSeekSeconds ?: resumePositionSeconds
+                        pendingSeekSeconds = null
                         currentStream.value = result.value
-                        engine.loadAt(track, result.value, resumePositionSeconds)
+                        engine.volume(if (muted.value) 0f else volume.value)
+                        engine.loadAt(track, result.value, startAt)
                         engine.soundProfile(soundProfile.value)
 
                     }
@@ -353,7 +570,13 @@ class Playback(
         }
     }
 
-    fun retry() { (lastRequest ?: engine.state.value.track)?.let { select(it, restored.value?.takeIf { r -> r.track?.id == it.id }?.position ?: 0) } }
+    fun retry() {
+        val target = lastRequest ?: engine.state.value.track ?: restored.value?.track ?: return
+        val resumePos = engine.state.value.takeIf { it.track?.id == target.id && it.position > 0L }?.position
+            ?: restored.value?.takeIf { it.track?.id == target.id }?.position
+            ?: 0L
+        select(target, resumePos)
+    }
 
     fun download(track: MusicItem) {
         if (track.kind != MusicKind.Song) return

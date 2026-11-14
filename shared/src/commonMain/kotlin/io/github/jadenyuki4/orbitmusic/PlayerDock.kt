@@ -601,8 +601,8 @@ fun TimingTransportBar(
     val isPlaying = if (playback != null) state.playing else localPlaying
     var dragging by remember(state.track?.id) { mutableStateOf<Float?>(null) }
 
-    val duration = state.duration.coerceAtLeast(0L)
-    val currentPos = (dragging ?: state.position.toFloat()).toLong().coerceAtLeast(0L)
+    val duration = (state.duration.takeIf { it > 0L } ?: state.track?.durationSeconds ?: 0L).coerceAtLeast(0L)
+    val currentPos = (dragging ?: state.position.coerceAtLeast(0L).toFloat()).toLong().coerceAtLeast(0L)
     val btnSize = if (compact) 32.dp else 36.dp
     val playSize = if (compact) 40.dp else 46.dp
 
@@ -691,7 +691,7 @@ fun TimingTransportBar(
                 value = dragging ?: state.position.coerceIn(0, duration).toFloat(),
                 onValueChange = { dragging = it },
                 onValueChangeFinished = {
-                    dragging?.let { playback?.engine?.seek(it.toLong()) }
+                    dragging?.let { playback?.seekTo(it.toLong()) }
                     dragging = null
                 },
                 valueRange = 0f..duration.toFloat(),

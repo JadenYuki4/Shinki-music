@@ -113,7 +113,7 @@ fun SyncedLyricsView(player: Playback, item: MusicItem) {
                             parsed.syncedLines.forEachIndexed { idx, line ->
                                 val isActive = idx == active
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth().clickable { player.engine.seek(line.timeSeconds) },
+                                    modifier = Modifier.fillMaxWidth().clickable { player.seekTo(line.timeSeconds) },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isActive) p.elevated else Color.Transparent,
                                     border = if (isActive) BorderStroke(1.dp, p.primary) else null,

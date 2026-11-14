@@ -15,6 +15,7 @@ internal interface Mpv : Library {
     fun mpv_initialize(ctx: Pointer): Int
     fun mpv_command(ctx: Pointer, args: StringArray): Int
     fun mpv_get_property(ctx: Pointer, name: String, format: Int, value: DoubleByReference): Int
+    fun mpv_get_property(ctx: Pointer, name: String, format: Int, value: com.sun.jna.ptr.IntByReference): Int
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer
     fun mpv_terminate_destroy(ctx: Pointer)
 }
@@ -27,10 +28,14 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     private var api: Mpv? = null
     private var handle: Pointer? = null
     private var polling: Job? = null
+    private var lastTrack: MusicItem? = null
     private var lastStream: AudioStream? = null
     private var ended = false
+    private var seekGraceUntilNs: Long = 0L
     private var manualFilter: String? = null
     private var activeProfile: SoundProfile = SoundProfile.AnimeOST
+    @Volatile
+    private var targetVolume: Float = 1f
 
     private fun open(): Pointer {
         handle?.let { return it }
@@ -52,6 +57,9 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                 "config" to "no",
                 "cache-secs" to "20",
                 "demuxer-max-bytes" to "16MiB",
+                "demuxer-max-back-bytes" to "8MiB",
+                "network-timeout" to "15",
+                "user-agent" to "Mozilla/5.0 (compatible; ShinkiMusic/${ShinkiAppInfo.VERSION})",
                 "audio-pitch-correction" to "yes",
             )
             options.forEach { (key, value) -> check(lib.mpv_set_option_string(ctx, key, value) >= 0) }
@@ -63,6 +71,9 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         }
         api = lib
         handle = ctx
+        runCatching {
+            lib.mpv_command(ctx, StringArray(arrayOf("set", "volume", (targetVolume * 100f).toString()), "UTF-8"))
+        }
         return ctx
     }
 
@@ -77,17 +88,26 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
             try {
                 open()
                 drainEvents()
+                lastTrack = track
                 lastStream = stream
                 ended = false
-                command("loadfile", stream.url, "replace", "-1", "start=$seconds")
+                val targetStart = seconds.coerceAtLeast(0L)
+                seekGraceUntilNs = if (targetStart > 0L) System.nanoTime() + 1_200_000_000L else 0L
+                command("set", "start", targetStart.toString())
+                command("loadfile", stream.url, "replace")
                 applySoundProfile(activeProfile)
+                runCatching { command("set", "volume", (targetVolume * 100f).toString()) }
                 command("set", "pause", "no")
-                state.value = Transport(track, playing = true, position = seconds, duration = track.durationSeconds ?: 0)
+                state.value = Transport(track, playing = true, position = targetStart, duration = track.durationSeconds ?: 0)
                 polling = launch {
                     while (isActive && !ended) {
                         drainEvents()
+                        if (ended) break
+                        val now = System.nanoTime()
+                        val seekingFlag = flag("seeking") == true
+                        val inSeekGrace = now < seekGraceUntilNs
                         if (state.value.playing) state.value = state.value.copy(
-                            position = number("time-pos") ?: state.value.position,
+                            position = if (seekingFlag || inSeekGrace) state.value.position else (number("time-pos") ?: state.value.position),
                             duration = number("duration") ?: state.value.duration)
                         delay(if (state.value.playing) 500 else 1500)
                     }
@@ -103,6 +123,11 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     private fun number(property: String): Long? {
         val value = DoubleByReference()
         return if (api!!.mpv_get_property(handle!!, property, 5, value) >= 0) value.value.toLong().coerceAtLeast(0) else null
+    }
+
+    private fun flag(property: String): Boolean? {
+        val value = com.sun.jna.ptr.IntByReference()
+        return if (api!!.mpv_get_property(handle!!, property, 3, value) >= 0) value.value != 0 else null
     }
 
     private fun drainEvents() {
@@ -122,7 +147,12 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         }
     }
 
-    override fun volume(value: Float) { setNumber("volume", value * 100) }
+    override fun volume(value: Float) {
+        if (!value.isFinite()) return
+        val clamped = value.coerceIn(0f, 1f)
+        targetVolume = clamped
+        setNumber("volume", clamped * 100f)
+    }
     override fun speed(value: Float) { setNumber("speed", value) }
 
     override fun soundProfile(profile: SoundProfile) {
@@ -165,8 +195,17 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     }
     override fun seek(seconds: Long) {
         scope.launch {
-            if (handle != null && runCatching { command("seek", seconds.toString(), "absolute") }.isSuccess)
-                state.value = state.value.copy(position = seconds)
+            val target = seconds.coerceAtLeast(0L)
+            val track = lastTrack ?: state.value.track
+            val stream = lastStream
+            if (ended && track != null && stream != null) {
+                loadAt(track, stream, target)
+                return@launch
+            }
+            if (handle != null && runCatching { command("seek", target.toString(), "absolute") }.isSuccess) {
+                seekGraceUntilNs = System.nanoTime() + 1_200_000_000L
+                state.value = state.value.copy(position = target, ended = false)
+            }
         }
     }
 

@@ -139,4 +139,18 @@ class NewPipeMusicSourceTest {
             interleaveLists(listOf(listOf("a1", "a2"), listOf("b1", "b2"), listOf("c1"))),
         )
     }
+
+    @Test fun selectStreamMarksHlsPlaylistAsApplicationMpegUrl() {
+        val hlsStream = org.schabi.newpipe.extractor.stream.AudioStream.Builder()
+            .setId("sc-hls")
+            .setContent("https://cf-hls-media.sndcdn.com/playlist/test.128.mp3/playlist.m3u8?Policy=abc", true)
+            .setMediaFormat(org.schabi.newpipe.extractor.MediaFormat.MP3)
+            .setDeliveryMethod(org.schabi.newpipe.extractor.stream.DeliveryMethod.HLS)
+            .setAverageBitrate(128)
+            .build()
+        val chosen = selectStream(listOf(hlsStream), AudioQuality.High, AudioFormatPreference.Auto)
+        assertNotNull(chosen)
+        assertEquals("application/x-mpegURL", chosen.mimeType)
+        assertEquals("HLS", chosen.formatLabel)
+    }
 }

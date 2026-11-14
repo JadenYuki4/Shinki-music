@@ -10,9 +10,9 @@ internal enum class TasteMode(val label: String) {
 internal enum class TasteKind(val label: String) { Artist("Artista o grupo"), Genre("Género") }
 internal data class TasteRule(val name: String, val kind: TasteKind, val mode: TasteMode)
 
-internal class TasteStore(private val settings: Settings) {
+internal class TasteStore(private val settings: Settings?) {
     private val key = "recommendation.rules.v1"
-    private val state = MutableStateFlow(settings.getString(key, "").lineSequence().mapNotNull {
+    private val state = MutableStateFlow(settings?.getString(key, "").orEmpty().lineSequence().mapNotNull {
         val parts = it.split('\t')
         if (parts.size != 3) null else runCatching {
             TasteRule(parts[2], TasteKind.valueOf(parts[0]), TasteMode.valueOf(parts[1]))
@@ -28,7 +28,7 @@ internal class TasteStore(private val settings: Settings) {
     }
     fun remove(rule: TasteRule) = save(state.value - rule)
     private fun save(list: List<TasteRule>) {
-        settings.putString(key, list.joinToString("\n") { "${it.kind}\t${it.mode}\t${it.name}" })
+        settings?.putString(key, list.joinToString("\n") { "${it.kind}\t${it.mode}\t${it.name}" })
         state.value = list
     }
 }
