@@ -15,8 +15,11 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 class PlaybackService : MediaSessionService() {
     private lateinit var session: MediaSession
@@ -75,19 +78,44 @@ class PlaybackService : MediaSessionService() {
         })
         attach(player.audioSessionId)
         scope.launch { settings.collect { applyBands(it) } }
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val queuePlayer = SessionQueuePlayer(player, playback)
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider(this).apply {
+                setSmallIcon(android.R.drawable.ic_media_play)
+            }
+        )
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_player", true)
+        }
+        val open = PendingIntent.getActivity(
+            this,
+            0,
+            openIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val queuePlayer = SessionQueuePlayer(player, playback, scope)
         scope.launch { playback.queue.collect { queuePlayer.queueChanged() } }
+        scope.launch { playback.pending.collect { queuePlayer.queueChanged() } }
+        scope.launch { playback.volume.collect { queuePlayer.queueChanged() } }
+        scope.launch {
+            playback.engine.state
+                .map { Triple(it.track?.id, it.playing, it.ended) }
+                .distinctUntilChanged()
+                .collect { queuePlayer.queueChanged() }
+        }
         val callback = object : MediaSession.Callback {
             override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
-                if (controller.packageName != packageName && !controller.isTrusted) return MediaSession.ConnectionResult.reject()
+                // Accept external system, lock-screen, Bluetooth AVRCP, and Wear OS controllers.
                 val commands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon().addAll(
-                    Player.COMMAND_SET_DEVICE_VOLUME, Player.COMMAND_ADJUST_DEVICE_VOLUME,
-                    Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS, Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
+                    Player.COMMAND_SET_DEVICE_VOLUME,
+                    Player.COMMAND_ADJUST_DEVICE_VOLUME,
+                    Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS,
+                    Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
                 ).build()
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                    .setAvailablePlayerCommands(commands).build()
+                    .setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS)
+                    .setAvailablePlayerCommands(commands)
+                    .build()
             }
         }
         session = MediaSession.Builder(this, queuePlayer).setSessionActivity(open).setCallback(callback).build()

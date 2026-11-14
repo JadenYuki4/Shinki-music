@@ -24,8 +24,13 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
             }
         }
 
-    private data class Cursor(val query: String, val kind: MusicKind, val size: Int,
-        val pending: List<MusicItem>, val upstream: Page?)
+    private data class Cursor(
+        val query: String,
+        val kind: MusicKind?,
+        val size: Int,
+        val pending: List<MusicItem>,
+        val upstream: Page?,
+    )
     private val mutex = Mutex()
     private val cursors = linkedMapOf<String, Cursor>()
 
@@ -42,32 +47,48 @@ class NewPipeMusicSource internal constructor(private val gateway: ExtractorGate
         val clean = query.trim()
         if (clean.length > 200 || pageSize !in 1..50) return SourceResult.Failure(SourceError.InvalidRequest)
         if (clean.isEmpty()) return SourceResult.Success(MusicPage(emptyList()))
-        val category = kind ?: MusicKind.Song
+        val isDirectUrl = clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true)
         return mutex.withLock {
             val previous = page?.let { cursors[it] }
-            if (page != null && (previous == null || previous.query != clean || previous.kind != category || previous.size != pageSize)) {
+            if (page != null && (previous == null || previous.query != clean || previous.kind != kind || previous.size != pageSize)) {
                 return@withLock SourceResult.Failure(SourceError.InvalidRequest)
             }
             val fetched = if (previous != null && previous.pending.isNotEmpty()) {
                 SourceResult.Success(ExtractedPage(previous.pending, previous.upstream))
-            } else guarded { gateway.search(clean, category, previous?.upstream) }
+            } else {
+                guarded {
+                    if (kind == null) gateway.searchUnified(clean, previous?.upstream)
+                    else gateway.search(clean, kind, previous?.upstream)
+                }
+            }
             when (fetched) {
                 is SourceResult.Failure -> fetched
                 is SourceResult.Success -> {
                     val batch = fetched.value
                     if (batch.items.size > 200) return@withLock SourceResult.Failure(SourceError.SourceChanged)
-                    val items = batch.items.distinctBy { it.id }.filter { it.kind == category }
+                    val distinct = batch.items.distinctBy { it.id }
+                    val items = if (kind != null && !isDirectUrl) distinct.filter { it.kind == kind } else distinct
                     val remaining = items.drop(pageSize)
                     val next = if (remaining.isNotEmpty() || batch.next != null) {
                         UUID.randomUUID().toString().also { token ->
-                            cursors[token] = Cursor(clean, category, pageSize, remaining, batch.next)
+                            cursors[token] = Cursor(clean, kind, pageSize, remaining, batch.next)
                             while (cursors.size > 16) cursors.remove(cursors.keys.first())
                         }
                     } else null
-                    SourceResult.Success(MusicPage(items.take(pageSize), next))
+                    val warning = batch.failedSources.takeIf { it.isNotEmpty() && items.isNotEmpty() }?.let {
+                        "No respondieron: ${it.joinToString(", ")}"
+                    }
+                    SourceResult.Success(MusicPage(items.take(pageSize), next, partialWarning = warning))
                 }
             }
         }
+    }
+
+    override suspend fun collectionItems(item: MusicItem): SourceResult<List<MusicItem>> {
+        if (!item.id.startsWith("http://", ignoreCase = true) && !item.id.startsWith("https://", ignoreCase = true)) {
+            return SourceResult.Failure(SourceError.InvalidRequest)
+        }
+        return guarded { gateway.collectionItems(item).distinctBy { it.id } }
     }
 
     override suspend fun lyrics(item: MusicItem): SourceResult<String?> = guarded {

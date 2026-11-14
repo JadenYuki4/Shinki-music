@@ -22,6 +22,12 @@ data class SearchState(
     val submitted: Boolean = false,
     val error: SourceError? = null,
     val reachedLimit: Boolean = false,
+    val showAllCategories: Boolean = false,
+    val partialSourceWarning: String? = null,
+    val selectedCollection: MusicItem? = null,
+    val collectionItems: List<MusicItem> = emptyList(),
+    val collectionLoading: Boolean = false,
+    val collectionError: SourceError? = null,
 )
 
 /** Testable state owner. Generation checks also reject sources that ignore cancellation. */
@@ -29,12 +35,20 @@ class SearchController(
     internal val source: MusicSource,
     private val scope: CoroutineScope,
     internal val historyStore: HistoryStore = InMemoryHistoryStore(),
+    defaultAllCategories: Boolean = false,
 ) {
-    private val mutable = MutableStateFlow(SearchState(repository = source.repository))
+    private val mutable = MutableStateFlow(
+        SearchState(
+            repository = source.repository,
+            showAllCategories = defaultAllCategories,
+        )
+    )
     val state: StateFlow<SearchState> = mutable.asStateFlow()
     private var revision = 0L
+    private var collectionRevision = 0L
     private var suggestionsJob: Job? = null
     private var searchJob: Job? = null
+    private var collectionJob: Job? = null
 
     init {
         scope.launch {
@@ -49,18 +63,31 @@ class SearchController(
         }
     }
 
-    fun selectRepository(repository: MusicRepository) {
-        if (repository == mutable.value.repository && source.repository == repository) return
-        invalidate()
-        source.repository = repository
+    private fun resetForQueryOrFilter(
+        query: String = mutable.value.query,
+        kind: MusicKind = mutable.value.kind,
+        repository: MusicRepository = mutable.value.repository,
+        showAllCategories: Boolean = mutable.value.showAllCategories,
+        submitted: Boolean = false,
+    ) {
         val current = mutable.value
         mutable.value = SearchState(
-            query = current.query,
-            kind = current.kind,
+            query = query,
+            kind = kind,
             repository = repository,
             history = current.history,
             incognito = current.incognito,
+            submitted = submitted,
+            showAllCategories = showAllCategories,
         )
+    }
+
+    fun selectRepository(repository: MusicRepository) {
+        if (repository == mutable.value.repository && source.repository == repository) return
+        invalidate()
+        closeCollectionInternal()
+        source.repository = repository
+        resetForQueryOrFilter(repository = repository)
         if (mutable.value.query.isNotBlank()) submit()
     }
 
@@ -68,28 +95,24 @@ class SearchController(
         val query = value.take(200)
         if (query == mutable.value.query) return
         invalidate()
-        val current = mutable.value
-        mutable.value = SearchState(
-            query = query,
-            kind = current.kind,
-            repository = current.repository,
-            history = current.history,
-            incognito = current.incognito,
-        )
+        closeCollectionInternal()
+        resetForQueryOrFilter(query = query)
         suggest()
     }
 
-    fun selectKind(kind: MusicKind) {
-        if (kind == mutable.value.kind) return
+    fun selectAllCategories() {
+        if (mutable.value.showAllCategories) return
         invalidate()
-        val current = mutable.value
-        mutable.value = SearchState(
-            query = current.query,
-            kind = kind,
-            repository = current.repository,
-            history = current.history,
-            incognito = current.incognito,
-        )
+        closeCollectionInternal()
+        resetForQueryOrFilter(showAllCategories = true)
+        if (mutable.value.query.isNotBlank()) submit()
+    }
+
+    fun selectKind(kind: MusicKind) {
+        if (!mutable.value.showAllCategories && kind == mutable.value.kind) return
+        invalidate()
+        closeCollectionInternal()
+        resetForQueryOrFilter(kind = kind, showAllCategories = false)
         if (mutable.value.query.isNotBlank()) submit()
     }
 
@@ -100,14 +123,12 @@ class SearchController(
 
     fun chooseHistory(entry: SearchHistoryEntry) {
         invalidate()
-        val current = mutable.value
+        closeCollectionInternal()
         val query = entry.query.take(200)
-        mutable.value = SearchState(
+        resetForQueryOrFilter(
             query = query,
             kind = entry.kind,
-            repository = current.repository,
-            history = current.history,
-            incognito = current.incognito,
+            showAllCategories = false,
             submitted = true,
         )
         scope.launch { historyStore.recordSearch(query, entry.kind) }
@@ -125,7 +146,10 @@ class SearchController(
     fun suggest() {
         suggestionsJob?.cancel()
         val query = mutable.value.query.trim()
-        if (query.length < 2) return
+        if (query.length < 2 || query.startsWith("http://", true) || query.startsWith("https://", true)) {
+            mutable.update { it.copy(suggestions = emptyList(), suggestionError = null) }
+            return
+        }
         val generation = revision
         suggestionsJob = scope.launch {
             delay(300)
@@ -142,27 +166,16 @@ class SearchController(
 
     fun submit() {
         invalidate()
+        closeCollectionInternal()
         val old = mutable.value
         val trimmed = old.query.trim()
         if (trimmed.isEmpty()) {
-            mutable.value = SearchState(
-                query = old.query,
-                kind = old.kind,
-                repository = old.repository,
-                history = old.history,
-                incognito = old.incognito,
-            )
+            resetForQueryOrFilter(query = old.query, submitted = false)
             return
         }
-        mutable.value = SearchState(
-            query = old.query,
-            kind = old.kind,
-            repository = old.repository,
-            history = old.history,
-            incognito = old.incognito,
-            submitted = true,
-        )
-        scope.launch { historyStore.recordSearch(trimmed, old.kind) }
+        resetForQueryOrFilter(query = old.query, submitted = true)
+        val recordKind = if (old.showAllCategories) MusicKind.Song else old.kind
+        scope.launch { historyStore.recordSearch(trimmed, recordKind) }
         fetch(append = false)
     }
 
@@ -172,20 +185,88 @@ class SearchController(
 
     fun retry() {
         if (mutable.value.loading) return
-        if (mutable.value.error == SourceError.InvalidRequest) submit()
+        if (mutable.value.error == SourceError.InvalidRequest || mutable.value.items.isEmpty()) submit()
         else fetch(append = mutable.value.nextPage != null)
+    }
+
+    fun retrySources() {
+        if (mutable.value.loading || mutable.value.query.isBlank()) return
+        fetch(append = false)
+    }
+
+    fun openCollection(item: MusicItem) {
+        if (item.kind == MusicKind.Song) return
+        collectionRevision++
+        collectionJob?.cancel()
+        val generation = collectionRevision
+        mutable.update {
+            it.copy(
+                selectedCollection = item,
+                collectionItems = emptyList(),
+                collectionLoading = true,
+                collectionError = null,
+            )
+        }
+        collectionJob = scope.launch {
+            when (val result = source.collectionItems(item)) {
+                is SourceResult.Success -> if (generation == collectionRevision) {
+                    mutable.update {
+                        it.copy(
+                            collectionItems = result.value,
+                            collectionLoading = false,
+                            collectionError = null,
+                        )
+                    }
+                }
+                is SourceResult.Failure -> if (generation == collectionRevision) {
+                    mutable.update {
+                        it.copy(
+                            collectionLoading = false,
+                            collectionError = result.error,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun retryCollection() {
+        mutable.value.selectedCollection?.let { openCollection(it) }
+    }
+
+    fun closeCollection() {
+        closeCollectionInternal()
+        mutable.update {
+            it.copy(
+                selectedCollection = null,
+                collectionItems = emptyList(),
+                collectionLoading = false,
+                collectionError = null,
+            )
+        }
     }
 
     private fun fetch(append: Boolean) {
         val before = mutable.value
         if (before.query.isBlank()) return
         val generation = revision
-        mutable.update { it.copy(loading = true, error = null, suggestionError = null, suggestions = emptyList()) }
+        val requestedKind: MusicKind? = if (before.showAllCategories) null else before.kind
+        mutable.update {
+            it.copy(
+                loading = true,
+                error = null,
+                suggestionError = null,
+                suggestions = emptyList(),
+                partialSourceWarning = if (append) it.partialSourceWarning else null,
+            )
+        }
         searchJob = scope.launch {
-            val result = source.search(before.query.trim(), before.kind, if (append) before.nextPage else null, 30)
+            val result = source.search(before.query.trim(), requestedKind, if (append) before.nextPage else null, 30)
             if (generation != revision) return@launch
             when (result) {
-                is SourceResult.Failure -> mutable.update { it.copy(loading = false, error = result.error) }
+                is SourceResult.Failure -> mutable.update {
+                    it.copy(loading = false, error = result.error)
+                }
                 is SourceResult.Success -> mutable.update { current ->
                     val merged = ((if (append) current.items else emptyList()) + result.value.items).distinctBy { it.id }
                     val capped = merged.size >= 300
@@ -196,10 +277,16 @@ class SearchController(
                         submitted = true,
                         error = null,
                         reachedLimit = capped,
+                        partialSourceWarning = result.value.partialWarning ?: if (append) current.partialSourceWarning else null,
                     )
                 }
             }
         }
+    }
+
+    private fun closeCollectionInternal() {
+        collectionRevision++
+        collectionJob?.cancel()
     }
 
     private fun invalidate() {
@@ -213,7 +300,12 @@ class SearchViewModel(
     source: MusicSource,
     historyStore: HistoryStore = InMemoryHistoryStore(),
 ) : ViewModel() {
-    val controller = SearchController(source, viewModelScope, historyStore)
+    val controller = SearchController(source, viewModelScope, historyStore, defaultAllCategories = true)
+}
+
+fun submitSearchQuery(model: SearchViewModel, query: String) {
+    model.controller.changeQuery(query)
+    model.controller.submit()
 }
 
 fun SourceError.userMessage(): String = when (this) {

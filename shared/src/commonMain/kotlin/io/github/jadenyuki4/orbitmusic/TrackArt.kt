@@ -40,7 +40,12 @@ internal expect fun loadAnimeBackdrop(): ImageBitmap?
 internal expect fun loadPlayerAnimeGifBackdrop(): ImageBitmap?
 
 @Composable
-fun TrackArt(item: MusicItem?, modifier: Modifier, localArtPath: String? = null) {
+fun TrackArt(
+    item: MusicItem?,
+    modifier: Modifier,
+    localArtPath: String? = null,
+    contentScale: ContentScale = ContentScale.Crop,
+) {
     val url = localArtPath?.takeIf { it.isNotBlank() } ?: item?.artworkUrl
     var image by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(url) {
@@ -48,7 +53,7 @@ fun TrackArt(item: MusicItem?, modifier: Modifier, localArtPath: String? = null)
     }
     val current = image
     if (current == null) SignalSleeve(modifier)
-    else Image(current, null, modifier, contentScale = ContentScale.Crop, filterQuality = FilterQuality.High)
+    else Image(current, null, modifier, contentScale = contentScale, filterQuality = FilterQuality.High)
 }
 
 @Composable
@@ -57,6 +62,7 @@ fun AnimeGifBackdropCanvas(
     modifier: Modifier = Modifier,
     focalBiasX: Float = 0.08f,
     compactCard: Boolean = false,
+    cleanStage: Boolean = false,
 ) {
     val gifImage = remember { loadPlayerAnimeGifBackdrop() }
     val effects = LocalEffects.current
@@ -118,9 +124,10 @@ fun AnimeGifBackdropCanvas(
         beatPhase = 0f
     }
 
+    val fullCanvas = cleanStage || compactCard
     Box(modifier.clipToBounds().background(Color(0xFF0A0416))) {
         if (gifImage != null) {
-            val imageModifier = if (compactCard) {
+            val imageModifier = if (fullCanvas) {
                 Modifier.fillMaxSize()
             } else {
                 Modifier.fillMaxWidth().height(230.dp).align(Alignment.TopCenter)
@@ -134,7 +141,7 @@ fun AnimeGifBackdropCanvas(
                     translationX = panX
                     translationY = panY
                 },
-                alignment = BiasAlignment(focalBiasX, -0.1f),
+                alignment = BiasAlignment(focalBiasX, if (cleanStage) 0f else -0.1f),
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.High,
             )
@@ -144,7 +151,7 @@ fun AnimeGifBackdropCanvas(
             val neonViolet = Color(0xFF9D4EDD)
             val darkNight = Color(0xFF090314)
 
-            if (!compactCard) {
+            if (!fullCanvas) {
                 drawRect(
                     brush = Brush.verticalGradient(
                         0.0f to Color.Transparent,
@@ -158,24 +165,24 @@ fun AnimeGifBackdropCanvas(
             drawCircle(
                 brush = Brush.radialGradient(
                     listOf(
-                        neonPink.copy(alpha = 0.24f * glowPulse),
-                        neonViolet.copy(alpha = 0.12f * glowPulse),
+                        neonPink.copy(alpha = (if (cleanStage) 0.14f else 0.24f) * glowPulse),
+                        neonViolet.copy(alpha = (if (cleanStage) 0.08f else 0.12f) * glowPulse),
                         Color.Transparent,
                     )
                 ),
                 radius = size.minDimension * 0.56f,
-                center = Offset(size.width * 0.38f, size.height * (if (compactCard) 0.42f else 0.30f)),
+                center = Offset(size.width * 0.38f, size.height * (if (fullCanvas) 0.44f else 0.30f)),
             )
 
             drawCircle(
                 brush = Brush.radialGradient(
                     listOf(
-                        Color(0xFFFF7AF0).copy(alpha = 0.20f * glowPulse),
+                        Color(0xFFFF7AF0).copy(alpha = (if (cleanStage) 0.12f else 0.20f) * glowPulse),
                         Color.Transparent,
                     )
                 ),
                 radius = size.minDimension * 0.34f,
-                center = Offset(size.width * 0.72f, size.height * (if (compactCard) 0.45f else 0.34f)),
+                center = Offset(size.width * 0.72f, size.height * (if (fullCanvas) 0.45f else 0.34f)),
             )
 
             val starPositions = listOf(0.10f to 0.12f, 0.24f to 0.08f, 0.48f to 0.10f, 0.86f to 0.14f, 0.92f to 0.26f)
@@ -188,37 +195,47 @@ fun AnimeGifBackdropCanvas(
                 )
             }
 
-            val barCount = if (compactCard) 20 else 28
-            val barSlot = size.width / barCount
-            val barWidth = barSlot * 0.56f
-            val baseLineY = if (compactCard) size.height * 0.96f else size.height * 0.62f
-            val maxBarHeight = if (compactCard) size.height * 0.22f else size.height * 0.15f
-            for (i in 0 until barCount) {
-                val wave = ((sin(beatPhase + i * 0.65f) + 1f) * 0.5f) *
-                    ((sin(beatPhase * 0.7f - i * 0.3f) + 1f) * 0.5f)
-                val ratio = if (playing) (0.20f + 0.80f * wave) else (0.14f + 0.28f * wave)
-                val barH = maxBarHeight * ratio
-                val x = i * barSlot + (barSlot - barWidth) / 2f
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFFF75EE).copy(alpha = if (compactCard) 0.36f else 0.60f),
-                            neonViolet.copy(alpha = if (compactCard) 0.18f else 0.30f),
-                        )
-                    ),
-                    topLeft = Offset(x, baseLineY - barH),
-                    size = Size(barWidth, barH),
-                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
-                )
+            if (!cleanStage) {
+                val barCount = if (compactCard) 20 else 28
+                val barSlot = size.width / barCount
+                val barWidth = barSlot * 0.56f
+                val baseLineY = if (compactCard) size.height * 0.96f else size.height * 0.62f
+                val maxBarHeight = if (compactCard) size.height * 0.22f else size.height * 0.15f
+                for (i in 0 until barCount) {
+                    val wave = ((sin(beatPhase + i * 0.65f) + 1f) * 0.5f) *
+                        ((sin(beatPhase * 0.7f - i * 0.3f) + 1f) * 0.5f)
+                    val ratio = if (playing) (0.20f + 0.80f * wave) else (0.14f + 0.28f * wave)
+                    val barH = maxBarHeight * ratio
+                    val x = i * barSlot + (barSlot - barWidth) / 2f
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color(0xFFFF75EE).copy(alpha = if (compactCard) 0.36f else 0.60f),
+                                neonViolet.copy(alpha = if (compactCard) 0.18f else 0.30f),
+                            )
+                        ),
+                        topLeft = Offset(x, baseLineY - barH),
+                        size = Size(barWidth, barH),
+                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                    )
+                }
             }
 
             drawRect(
-                brush = Brush.verticalGradient(
-                    0.0f to Color.Transparent,
-                    0.35f to Color(0x33120624),
-                    0.72f to Color(0xCC0C041A),
-                    1.0f to Color(0xF5080212),
-                )
+                brush = if (cleanStage) {
+                    Brush.verticalGradient(
+                        0.0f to Color(0x18090314),
+                        0.75f to Color.Transparent,
+                        1.0f to Color(0x4D080212),
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.35f to Color(0x33120624),
+                        0.72f to Color(0xCC0C041A),
+                        1.0f to Color(0xF5080212),
+                    )
+                }
             )
         }
     }

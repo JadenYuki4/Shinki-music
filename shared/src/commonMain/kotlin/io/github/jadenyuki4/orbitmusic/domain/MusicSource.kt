@@ -169,6 +169,7 @@ data class MusicItem(
     val musicBrainzId: String? = null,
     val genres: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
+    val sourceName: String? = null,
 ) {
     val repositoryBadge: String
         get() = when {
@@ -179,9 +180,22 @@ data class MusicItem(
             id.contains("youtube.com", ignoreCase = true) || id.contains("youtu.be", ignoreCase = true) -> "YOUTUBE"
             else -> "ORBIT"
         }
+
+    val sourceLabel: String
+        get() = sourceName ?: when (repositoryBadge) {
+            "YT MUSIC" -> "YT Music"
+            "YOUTUBE" -> "YouTube"
+            "SOUNDCLOUD" -> "SoundCloud"
+            "BANDCAMP" -> "Bandcamp"
+            else -> "YT Music"
+        }
 }
 
-data class MusicPage(val items: List<MusicItem>, val nextPage: String? = null)
+data class MusicPage(
+    val items: List<MusicItem>,
+    val nextPage: String? = null,
+    val partialWarning: String? = null,
+)
 
 data class AudioStream(
     val url: String,
@@ -207,6 +221,7 @@ interface MusicSource {
 
     suspend fun lyrics(item: MusicItem): SourceResult<String?> = SourceResult.Success(null)
     suspend fun related(songId: String): SourceResult<List<MusicItem>> = SourceResult.Success(emptyList())
+    suspend fun collectionItems(item: MusicItem): SourceResult<List<MusicItem>> = SourceResult.Success(emptyList())
     suspend fun suggestions(query: String): SourceResult<List<String>>
     suspend fun search(query: String, kind: MusicKind?, page: String? = null,
         pageSize: Int = 30): SourceResult<MusicPage>

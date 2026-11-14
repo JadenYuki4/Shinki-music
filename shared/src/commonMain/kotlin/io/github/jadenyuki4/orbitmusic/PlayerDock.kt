@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.jadenyuki4.orbitmusic.domain.*
 import io.github.jadenyuki4.orbitmusic.theme.*
+import kotlinx.coroutines.launch
 
 val AestheticPetalShape: Shape = RoundedCornerShape(percent = 50)
 
@@ -166,6 +169,7 @@ fun VividPlayerIconButton(
     active: Boolean = false,
     enabled: Boolean = true,
     size: Dp = 38.dp,
+    bordered: Boolean = true,
 ) {
     val p = LocalPalette.current
     val interaction = remember { MutableInteractionSource() }
@@ -185,15 +189,18 @@ fun VividPlayerIconButton(
     )
     val bgColor by animateColorAsState(
         targetValue = when {
-            pressed -> p.primary.copy(alpha = 0.32f)
-            active -> p.primary.copy(alpha = 0.22f)
-            hovered -> Color(0xFF343A4D)
-            else -> Color(0xFF262A36)
+            pressed -> p.primary.copy(alpha = if (bordered) 0.32f else 0.20f)
+            active && bordered -> p.primary.copy(alpha = 0.22f)
+            active && !bordered -> p.primary.copy(alpha = 0.14f)
+            hovered -> Color(0xFF343A4D).copy(alpha = if (bordered) 1f else 0.55f)
+            bordered -> Color(0xFF262A36)
+            else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 160),
     )
     val borderColor by animateColorAsState(
         targetValue = when {
+            !bordered -> Color.Transparent
             pressed || active -> p.primary
             hovered -> p.primary.copy(alpha = 0.55f)
             else -> p.muted.copy(alpha = 0.18f)
@@ -227,14 +234,16 @@ fun VividPlayerIconButton(
                 enabled = enabled,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(14.dp),
+        shape = if (bordered) RoundedCornerShape(14.dp) else RoundedCornerShape(percent = 50),
         color = bgColor,
-        border = BorderStroke(
-            width = if (active || hovered) 1.4.dp else 1.dp,
-            color = borderColor,
-        ),
+        border = if (bordered) {
+            BorderStroke(
+                width = if (active || hovered) 1.4.dp else 1.dp,
+                color = borderColor,
+            )
+        } else null,
     ) {
-        Canvas(Modifier.fillMaxSize().padding(9.dp)) {
+        Canvas(Modifier.fillMaxSize().padding(if (bordered) 9.dp else (size * 0.24f))) {
             drawPlayerVectorIcon(icon, iconColor)
         }
     }
@@ -795,130 +804,583 @@ fun SignalSleeve(modifier: Modifier) {
     }
 }
 
+internal enum class PlayerChromeIcon {
+    MinimizeDown,
+    MoreVert,
+    HeartOutline,
+    HeartFilled,
+    EqualizerBars,
+    ExpandFull,
+    CollapseFull,
+    DeviceSpeaker,
+    LyricsLines,
+    QueueList,
+    SearchGlass,
+}
+
 @Composable
-fun PlayerDock(playback: Playback?, expand: () -> Unit) {
-    val t = LocalLayout.current
-    val p = LocalPalette.current
-    val state = playback.displayTransport()
-    val pending = playback?.pending?.collectAsState()?.value
-    val error = playback?.failure?.collectAsState()?.value ?: state.error
-
-    var localQuality by remember { mutableStateOf(AudioQuality.High) }
-    var localFormat by remember { mutableStateOf(AudioFormatPreference.Auto) }
-
-    val quality = playback?.audioQuality?.collectAsState()?.value ?: localQuality
-    val format = playback?.audioFormat?.collectAsState()?.value ?: localFormat
-    val streamInfo = playback?.currentStream?.collectAsState()?.value
-    var qualityMenu by remember { mutableStateOf(false) }
-
-    BoxWithConstraints(
-        Modifier.fillMaxWidth()
-            .background(Color(0xFF16181F))
-    ) {
-        val compact = maxWidth < 760.dp
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TimingTransportBar(
-                playback = playback,
-                compact = compact,
-            )
-
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, p.primary.copy(alpha = 0.30f)),
-                    color = p.elevated,
-                ) {
-                    TrackArt(
-                        state.track ?: pending,
-                        Modifier.size(44.dp).clickable(
-                            enabled = state.track != null,
-                            onClickLabel = "Alternar reproductor completo",
-                            onClick = expand,
-                        ),
-                    )
+internal fun ChromeVectorIcon(
+    kind: PlayerChromeIcon,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = (size.minDimension * 0.095f).coerceAtLeast(1.8f)
+        val stroke = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        when (kind) {
+            PlayerChromeIcon.MinimizeDown -> {
+                val path = Path().apply {
+                    moveTo(w * 0.22f, h * 0.36f)
+                    lineTo(w * 0.50f, h * 0.64f)
+                    lineTo(w * 0.78f, h * 0.36f)
                 }
-                Column(
-                    Modifier.weight(1f).clickable(
-                        enabled = state.track != null,
-                        onClickLabel = "Alternar reproductor completo",
-                        onClick = expand,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AnimeEqualizerBars(playing = state.playing)
-                        Text(
-                            pending?.title ?: state.track?.title ?: "Sin reproducción",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = p.text,
-                        )
-                        SpotiFlacQualityBadge(
-                            text = if (streamInfo?.formatLabel?.contains("OFFLINE") == true) "OFFLINE" else quality.bitDepthLabel,
-                            highlighted = true,
-                        )
-                    }
-                    Text(
-                        if (pending != null) "Cargando audio…" else state.track?.subtitle ?: "Elegí una canción",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = p.muted,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                drawPath(path, color, style = stroke)
+            }
+            PlayerChromeIcon.MoreVert -> {
+                val r = size.minDimension * 0.085f
+                drawCircle(color, radius = r, center = Offset(w * 0.50f, h * 0.24f))
+                drawCircle(color, radius = r, center = Offset(w * 0.50f, h * 0.50f))
+                drawCircle(color, radius = r, center = Offset(w * 0.50f, h * 0.76f))
+            }
+            PlayerChromeIcon.HeartOutline, PlayerChromeIcon.HeartFilled -> {
+                val heart = Path().apply {
+                    moveTo(w * 0.50f, h * 0.84f)
+                    cubicTo(w * 0.14f, h * 0.60f, w * 0.10f, h * 0.30f, w * 0.28f, h * 0.20f)
+                    cubicTo(w * 0.40f, h * 0.13f, w * 0.50f, h * 0.24f, w * 0.50f, h * 0.32f)
+                    cubicTo(w * 0.50f, h * 0.24f, w * 0.60f, h * 0.13f, w * 0.72f, h * 0.20f)
+                    cubicTo(w * 0.90f, h * 0.30f, w * 0.86f, h * 0.60f, w * 0.50f, h * 0.84f)
+                    close()
                 }
-
-                Box {
-                    val fmtBadge = streamInfo?.formatLabel ?: format.shortLabel
-                    val badgeLabel = if (compact) {
-                        "✦ ${quality.bitDepthLabel} · $fmtBadge ▾"
-                    } else {
-                        "✦ ${quality.spotiFlacBadge} ($fmtBadge) ▾"
-                    }
-                    VividPillButton(
-                        text = badgeLabel,
-                        active = false,
-                        accentColor = p.primary,
-                        onClick = { qualityMenu = true },
-                    )
-                    QualityFormatDropdown(
-                        expanded = qualityMenu,
-                        onDismiss = { qualityMenu = false },
-                        quality = quality,
-                        format = format,
-                        onSelectQuality = { q ->
-                            if (playback != null) playback.setAudioQuality(q) else localQuality = q
-                            qualityMenu = false
-                        },
-                        onSelectFormat = { fmt ->
-                            if (playback != null) playback.setAudioFormat(fmt) else localFormat = fmt
-                            qualityMenu = false
-                        },
+                if (kind == PlayerChromeIcon.HeartFilled) {
+                    drawPath(heart, color, style = Fill)
+                } else {
+                    drawPath(heart, color, style = stroke)
+                }
+            }
+            PlayerChromeIcon.EqualizerBars -> {
+                val barW = w * 0.12f
+                val heights = listOf(0.42f, 0.76f, 0.56f, 0.68f)
+                val xs = listOf(0.16f, 0.38f, 0.60f, 0.82f)
+                xs.forEachIndexed { idx, xf ->
+                    val bh = h * heights[idx]
+                    val top = h * 0.85f - bh
+                    drawLine(
+                        color = color,
+                        start = Offset(w * xf, h * 0.85f),
+                        end = Offset(w * xf, top),
+                        strokeWidth = barW.coerceAtLeast(2f),
+                        cap = StrokeCap.Round,
                     )
                 }
             }
-
-            if (error != null) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(error, Modifier.weight(1f), color = p.error)
-                TextButton(onClick = { playback?.retry() }) { Text("Reintentar") }
+            PlayerChromeIcon.ExpandFull -> {
+                val corners = Path().apply {
+                    moveTo(w * 0.18f, h * 0.38f); lineTo(w * 0.18f, h * 0.18f); lineTo(w * 0.38f, h * 0.18f)
+                    moveTo(w * 0.62f, h * 0.18f); lineTo(w * 0.82f, h * 0.18f); lineTo(w * 0.82f, h * 0.38f)
+                    moveTo(w * 0.82f, h * 0.62f); lineTo(w * 0.82f, h * 0.82f); lineTo(w * 0.62f, h * 0.82f)
+                    moveTo(w * 0.38f, h * 0.82f); lineTo(w * 0.18f, h * 0.82f); lineTo(w * 0.18f, h * 0.62f)
+                }
+                drawPath(corners, color, style = stroke)
+            }
+            PlayerChromeIcon.CollapseFull -> {
+                val corners = Path().apply {
+                    moveTo(w * 0.38f, h * 0.18f); lineTo(w * 0.38f, h * 0.38f); lineTo(w * 0.18f, h * 0.38f)
+                    moveTo(w * 0.62f, h * 0.18f); lineTo(w * 0.62f, h * 0.38f); lineTo(w * 0.82f, h * 0.38f)
+                    moveTo(w * 0.18f, h * 0.62f); lineTo(w * 0.38f, h * 0.62f); lineTo(w * 0.38f, h * 0.82f)
+                    moveTo(w * 0.82f, h * 0.62f); lineTo(w * 0.62f, h * 0.62f); lineTo(w * 0.62f, h * 0.82f)
+                }
+                drawPath(corners, color, style = stroke)
+            }
+            PlayerChromeIcon.DeviceSpeaker -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(w * 0.24f, h * 0.12f),
+                    size = Size(w * 0.52f, h * 0.76f),
+                    cornerRadius = CornerRadius(w * 0.08f, w * 0.08f),
+                    style = stroke,
+                )
+                drawCircle(color, radius = size.minDimension * 0.06f, center = Offset(w * 0.50f, h * 0.32f))
+                drawCircle(color, radius = size.minDimension * 0.13f, center = Offset(w * 0.50f, h * 0.62f), style = stroke)
+            }
+            PlayerChromeIcon.LyricsLines -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = Offset(w * 0.14f, h * 0.18f),
+                    size = Size(w * 0.72f, h * 0.64f),
+                    cornerRadius = CornerRadius(w * 0.12f, w * 0.12f),
+                    style = stroke,
+                )
+                drawLine(color, Offset(w * 0.28f, h * 0.38f), Offset(w * 0.72f, h * 0.38f), strokeW, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.28f, h * 0.54f), Offset(w * 0.64f, h * 0.54f), strokeW, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.28f, h * 0.70f), Offset(w * 0.50f, h * 0.70f), strokeW, StrokeCap.Round)
+            }
+            PlayerChromeIcon.QueueList -> {
+                drawLine(color, Offset(w * 0.16f, h * 0.26f), Offset(w * 0.84f, h * 0.26f), strokeW, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.16f, h * 0.48f), Offset(w * 0.62f, h * 0.48f), strokeW, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.16f, h * 0.70f), Offset(w * 0.54f, h * 0.70f), strokeW, StrokeCap.Round)
+                val tri = Path().apply {
+                    moveTo(w * 0.66f, h * 0.54f)
+                    lineTo(w * 0.86f, h * 0.66f)
+                    lineTo(w * 0.66f, h * 0.78f)
+                    close()
+                }
+                drawPath(tri, color, style = Fill)
+            }
+            PlayerChromeIcon.SearchGlass -> {
+                drawCircle(color, radius = size.minDimension * 0.26f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
+                drawLine(color, Offset(w * 0.62f, h * 0.62f), Offset(w * 0.84f, h * 0.84f), strokeW, StrokeCap.Round)
             }
         }
     }
 }
 
 @Composable
-private fun QualityFormatDropdown(
+internal fun ChromeIconButton(
+    icon: PlayerChromeIcon,
+    contentDesc: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 38.dp,
+    iconSize: Dp = 20.dp,
+    tint: Color = LocalPalette.current.text,
+    enabled: Boolean = true,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(percent = 50))
+            .semantics {
+                contentDescription = contentDesc
+                role = Role.Button
+            }
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        ChromeVectorIcon(
+            kind = icon,
+            color = if (enabled) tint else tint.copy(alpha = 0.4f),
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+@Composable
+internal fun TrackFavoriteButton(
+    playback: Playback?,
+    track: MusicItem?,
+    modifier: Modifier = Modifier,
+    size: Dp = 38.dp,
+    iconSize: Dp = 22.dp,
+) {
+    val p = LocalPalette.current
+    val scope = rememberCoroutineScope()
+    val favorite = if (playback != null && track != null) {
+        remember(track.id, playback) { playback.history.observeIsFavorite(track.id) }
+            .collectAsState(false).value
+    } else false
+
+    ChromeIconButton(
+        icon = if (favorite) PlayerChromeIcon.HeartFilled else PlayerChromeIcon.HeartOutline,
+        contentDesc = if (favorite) "Quitar de favoritos" else "Agregar a favoritos",
+        onClick = {
+            if (playback != null && track != null) {
+                scope.launch { playback.history.toggleFavorite(track) }
+            }
+        },
+        modifier = modifier,
+        size = size,
+        iconSize = iconSize,
+        tint = if (favorite) p.primary else p.text,
+        enabled = track != null,
+    )
+}
+
+@Composable
+fun PlayerDock(
+    playback: Playback?,
+    theater: Boolean = false,
+    onOpenEqualizer: (() -> Unit)? = null,
+    onOpenQueue: (() -> Unit)? = null,
+    expand: () -> Unit,
+) {
+    val t = LocalLayout.current
+    val p = LocalPalette.current
+    val state = playback.displayTransport()
+    val pending = playback?.pending?.collectAsState()?.value
+    val error = playback?.failure?.collectAsState()?.value ?: state.error
+    val track = state.track ?: pending
+
+    var localQuality by remember { mutableStateOf(AudioQuality.High) }
+    var localFormat by remember { mutableStateOf(AudioFormatPreference.Auto) }
+    var localVolume by remember { mutableFloatStateOf(0.8f) }
+    var localMuted by remember { mutableStateOf(false) }
+    var localShuffle by remember { mutableStateOf(false) }
+    var localRepeat by remember { mutableStateOf(RepeatMode.Off) }
+    var localPlaying by remember { mutableStateOf(false) }
+
+    val quality = playback?.audioQuality?.collectAsState()?.value ?: localQuality
+    val format = playback?.audioFormat?.collectAsState()?.value ?: localFormat
+    val volume = playback?.volume?.collectAsState()?.value ?: localVolume
+    val muted = playback?.muted?.collectAsState()?.value ?: localMuted
+    val shuffle = playback?.shuffle?.collectAsState()?.value ?: localShuffle
+    val repeat = playback?.repeat?.collectAsState()?.value ?: localRepeat
+    val isPlaying = if (playback != null) state.playing else localPlaying
+    val streamInfo = playback?.currentStream?.collectAsState()?.value
+    var qualityMenu by remember { mutableStateOf(false) }
+    var draggingPos by remember(track?.id) { mutableStateOf<Float?>(null) }
+
+    val duration = (state.duration.takeIf { it > 0L } ?: track?.durationSeconds ?: 0L).coerceAtLeast(0L)
+    val currentPos = (draggingPos ?: state.position.coerceAtLeast(0L).toFloat()).toLong().coerceAtLeast(0L)
+    val progress = if (duration > 0L) (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+
+    BoxWithConstraints(
+        Modifier.fillMaxWidth()
+            .background(Color(0xFF14121F))
+    ) {
+        val compact = maxWidth < 760.dp
+        val narrowDesktop = maxWidth < 1040.dp
+
+        if (compact) {
+            Column(Modifier.fillMaxWidth()) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    color = p.primary,
+                    trackColor = p.elevated,
+                )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, p.primary.copy(alpha = 0.25f)),
+                        color = p.elevated,
+                    ) {
+                        TrackArt(
+                            track,
+                            Modifier.size(44.dp).clickable(
+                                enabled = state.track != null,
+                                onClickLabel = "Abrir reproductor",
+                                onClick = expand,
+                            ),
+                        )
+                    }
+                    Column(
+                        Modifier.weight(1f).clickable(
+                            enabled = state.track != null,
+                            onClickLabel = "Abrir reproductor",
+                            onClick = expand,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            pending?.title ?: state.track?.title ?: "Sin reproducción",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = p.text,
+                        )
+                        Text(
+                            if (pending != null) "Cargando audio…"
+                            else state.track?.subtitle ?: "Elegí una canción",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = p.muted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    TrackFavoriteButton(playback = playback, track = state.track, size = 36.dp, iconSize = 20.dp)
+                    VividPlayPauseButton(
+                        playing = isPlaying,
+                        size = 40.dp,
+                        onClick = {
+                            if (playback != null) playback.playOrToggle()
+                            else localPlaying = !localPlaying
+                        },
+                    )
+                    VividPlayerIconButton(
+                        icon = PlayerIconKind.Next,
+                        contentDesc = "Siguiente canción",
+                        size = 36.dp,
+                        bordered = false,
+                        onClick = {
+                            if (playback != null) {
+                                if (state.track == null && playback.queue.value.isEmpty()) playback.playOrToggle()
+                                else playback.next()
+                            }
+                        },
+                    )
+                }
+                if (error != null) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(error, Modifier.weight(1f), color = p.error, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { playback?.retry() }) { Text("Reintentar") }
+                    }
+                }
+            }
+        } else {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = t.small, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (error != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, Modifier.weight(1f), color = p.error, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { playback?.retry() }) { Text("Reintentar") }
+                    }
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (narrowDesktop) 10.dp else 16.dp),
+                ) {
+                    Row(
+                        Modifier.widthIn(min = if (narrowDesktop) 160.dp else 210.dp, max = if (narrowDesktop) 220.dp else 280.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, p.primary.copy(alpha = 0.25f)),
+                            color = p.elevated,
+                        ) {
+                            TrackArt(
+                                track,
+                                Modifier.size(48.dp).clickable(
+                                    enabled = state.track != null,
+                                    onClickLabel = "Alternar reproductor completo",
+                                    onClick = expand,
+                                ),
+                            )
+                        }
+                        Column(
+                            Modifier.weight(1f).clickable(
+                                enabled = state.track != null,
+                                onClickLabel = "Alternar reproductor completo",
+                                onClick = expand,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                pending?.title ?: state.track?.title ?: "Sin reproducción",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = p.text,
+                            )
+                            Text(
+                                if (pending != null) "Cargando audio…"
+                                else state.track?.subtitle ?: "Elegí una canción",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = p.muted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        TrackFavoriteButton(playback = playback, track = state.track, size = 34.dp, iconSize = 19.dp)
+                    }
+
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            VividPlayerIconButton(
+                                icon = PlayerIconKind.Shuffle,
+                                contentDesc = "Aleatorio",
+                                active = shuffle,
+                                size = 34.dp,
+                                bordered = false,
+                                onClick = {
+                                    if (playback != null) playback.shuffle.value = !shuffle
+                                    else localShuffle = !localShuffle
+                                },
+                            )
+                            VividPlayerIconButton(
+                                icon = PlayerIconKind.Previous,
+                                contentDesc = "Canción anterior",
+                                size = 36.dp,
+                                bordered = false,
+                                onClick = { playback?.back() },
+                            )
+                            VividPlayPauseButton(
+                                playing = isPlaying,
+                                size = 40.dp,
+                                onClick = {
+                                    if (playback != null) playback.playOrToggle()
+                                    else localPlaying = !localPlaying
+                                },
+                            )
+                            VividPlayerIconButton(
+                                icon = PlayerIconKind.Next,
+                                contentDesc = "Siguiente canción",
+                                size = 36.dp,
+                                bordered = false,
+                                onClick = {
+                                    if (playback != null) {
+                                        if (state.track == null && playback.queue.value.isEmpty()) playback.playOrToggle()
+                                        else playback.next()
+                                    }
+                                },
+                            )
+                            VividPlayerIconButton(
+                                icon = if (repeat == RepeatMode.One) PlayerIconKind.RepeatOne else PlayerIconKind.Repeat,
+                                contentDesc = "Modo de repetición",
+                                active = repeat != RepeatMode.Off,
+                                size = 34.dp,
+                                bordered = false,
+                                onClick = {
+                                    val nextMode = RepeatMode.entries[(repeat.ordinal + 1) % RepeatMode.entries.size]
+                                    if (playback != null) playback.repeat.value = nextMode
+                                    else localRepeat = nextMode
+                                },
+                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().widthIn(max = 540.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                clock(currentPos),
+                                color = p.muted,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Slider(
+                                value = if (duration > 0L) (draggingPos ?: state.position.coerceIn(0, duration).toFloat()) else 0f,
+                                onValueChange = { if (duration > 0L) draggingPos = it },
+                                onValueChangeFinished = {
+                                    draggingPos?.let { playback?.seekTo(it.toLong()) }
+                                    draggingPos = null
+                                },
+                                valueRange = 0f..(duration.coerceAtLeast(1L)).toFloat(),
+                                enabled = duration > 0L,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = p.primary,
+                                    activeTrackColor = p.primary,
+                                    inactiveTrackColor = p.elevated,
+                                    disabledThumbColor = p.muted.copy(alpha = 0.45f),
+                                    disabledActiveTrackColor = p.muted.copy(alpha = 0.3f),
+                                    disabledInactiveTrackColor = p.elevated,
+                                ),
+                                modifier = Modifier.weight(1f).height(22.dp)
+                                    .semantics { contentDescription = "Barra de progreso" },
+                            )
+                            Text(
+                                if (duration > 0L) clock(duration) else "0:00",
+                                color = p.muted,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (narrowDesktop) 4.dp else 8.dp),
+                    ) {
+                        VividPlayerIconButton(
+                            icon = if (muted || volume <= 0f) PlayerIconKind.Mute else PlayerIconKind.Speaker,
+                            contentDesc = if (muted || volume <= 0f) "Activar sonido" else "Silenciar",
+                            active = muted,
+                            size = 32.dp,
+                            bordered = false,
+                            onClick = { playback?.toggleMute() ?: run { localMuted = !localMuted } },
+                        )
+                        Slider(
+                            value = if (muted) 0f else volume,
+                            onValueChange = {
+                                if (playback != null) playback.setVolume(it)
+                                else {
+                                    localVolume = it
+                                    localMuted = it == 0f
+                                }
+                            },
+                            colors = SliderDefaults.colors(
+                                thumbColor = p.primary,
+                                activeTrackColor = p.primary,
+                                inactiveTrackColor = p.elevated,
+                            ),
+                            modifier = Modifier.width(if (narrowDesktop) 72.dp else 94.dp).height(22.dp)
+                                .semantics { contentDescription = "Ajustar volumen" },
+                        )
+                        Box {
+                            val badgeLabel = when {
+                                streamInfo?.formatLabel?.contains("OFFLINE") == true -> "✦ OFFLINE"
+                                narrowDesktop -> "✦ ${quality.bitDepthLabel}"
+                                else -> "✦ ${quality.spotiFlacBadge}"
+                            }
+                            VividPillButton(
+                                text = badgeLabel,
+                                active = false,
+                                accentColor = p.primary,
+                                onClick = { qualityMenu = true },
+                            )
+                            QualityFormatDropdown(
+                                expanded = qualityMenu,
+                                onDismiss = { qualityMenu = false },
+                                quality = quality,
+                                format = format,
+                                onSelectQuality = { q ->
+                                    if (playback != null) playback.setAudioQuality(q) else localQuality = q
+                                    qualityMenu = false
+                                },
+                                onSelectFormat = { fmt ->
+                                    if (playback != null) playback.setAudioFormat(fmt) else localFormat = fmt
+                                    qualityMenu = false
+                                },
+                            )
+                        }
+                        if (onOpenEqualizer != null) {
+                            ChromeIconButton(
+                                icon = PlayerChromeIcon.EqualizerBars,
+                                contentDesc = "Ecualizador",
+                                onClick = onOpenEqualizer,
+                                size = 34.dp,
+                                iconSize = 18.dp,
+                                tint = p.muted,
+                            )
+                        }
+                        if (onOpenQueue != null) {
+                            ChromeIconButton(
+                                icon = PlayerChromeIcon.QueueList,
+                                contentDesc = "Ver cola de reproducción",
+                                onClick = onOpenQueue,
+                                size = 34.dp,
+                                iconSize = 18.dp,
+                                tint = p.muted,
+                            )
+                        }
+                        ChromeIconButton(
+                            icon = if (theater) PlayerChromeIcon.CollapseFull else PlayerChromeIcon.ExpandFull,
+                            contentDesc = if (theater) "Salir de vista expandida" else "Expandir reproductor",
+                            onClick = expand,
+                            size = 34.dp,
+                            iconSize = 18.dp,
+                            tint = if (theater) p.primary else p.muted,
+                            enabled = state.track != null || theater,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun QualityFormatDropdown(
     expanded: Boolean,
     onDismiss: () -> Unit,
     quality: AudioQuality,

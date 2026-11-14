@@ -120,6 +120,53 @@ class PlaybackServiceTest {
         }
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test fun skipDebouncePreventsDoubleNextSkipAndPreservesVolumeControl() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = context.applicationContext as OrbitApplication
+        val clip = resumeClip(app)
+        val tracks = (1..3).map { index ->
+            MusicItem("qa-debounce-$index", "Debounce $index", "Artista", MusicKind.Song, durationSeconds = 60)
+        }
+        tracks.forEach { app.history.saveDownload(DownloadedTrack(it, clip.absolutePath, "audio/wav")) }
+        val future = withContext(Dispatchers.Main) {
+            MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java)))
+                .setAllowDeviceVolumeCommandsForLocalPlayback(true)
+                .buildAsync()
+        }
+        val controller = withContext(Dispatchers.IO) { future.get(15, TimeUnit.SECONDS) }
+        try {
+            withContext(Dispatchers.Main) {
+                val playback = app.playback
+                playback.autoplay.value = false
+                playback.clearQueue()
+                playback.enqueue(tracks[1])
+                playback.enqueue(tracks[2])
+                playback.playFromSearch(tracks[0])
+                withTimeout(20000) {
+                    while (controller.currentMediaItem?.mediaId != tracks[0].id || !controller.isPlaying) delay(100)
+                }
+                delay(300)
+                // Fire two rapid Next requests inside the 250ms debounce window.
+                controller.seekToNextMediaItem()
+                controller.seekToNextMediaItem()
+                delay(450)
+                assertEquals(tracks[1].id, playback.engine.state.value.track?.id)
+                val initial = controller.deviceVolume
+                val max = controller.deviceInfo.maxVolume
+                if (max > 0) {
+                    if (initial < max) controller.increaseDeviceVolume(0) else controller.decreaseDeviceVolume(0)
+                    delay(200)
+                    assertTrue(playback.volume.value in 0f..1f)
+                    controller.setDeviceVolume(initial, 0)
+                }
+                controller.pause()
+            }
+        } finally {
+            withContext(Dispatchers.Main) { MediaController.releaseFuture(future) }
+        }
+    }
+
     @Test fun audioContinuesWithMediaNotificationAfterActivityLeaves() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext

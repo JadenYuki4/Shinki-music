@@ -162,4 +162,96 @@ class SearchControllerTest {
         runCurrent()
         assertTrue(controller.state.value.history.isEmpty())
     }
+
+    @Test fun allCategoriesModePassesNullKindAndKeepsMixedResults() = runTest {
+        val mixedItems = listOf(
+            MusicItem("s1", "Si no es muy tarde", "Luciano Pereyra", MusicKind.Song, sourceName = "YT Music"),
+            MusicItem("a1", "Si no es muy tarde", "Luciano Pereyra", MusicKind.Album, sourceName = "YT Music"),
+            MusicItem("ar1", "Luciano Pereyra", "Artist", MusicKind.Artist, sourceName = "YouTube"),
+            MusicItem("p1", "Éxitos latinos", "Shinki", MusicKind.Playlist, sourceName = "SoundCloud"),
+        )
+        val source = object : Source() {
+            override suspend fun search(query: String, kind: MusicKind?, page: String?, pageSize: Int): SourceResult<MusicPage> {
+                searched.add(Triple(query, kind, page))
+                val items = if (kind == null) mixedItems else mixedItems.filter { it.kind == kind }
+                return SourceResult.Success(MusicPage(items))
+            }
+        }
+        val controller = SearchController(source, backgroundScope, defaultAllCategories = true)
+        assertTrue(controller.state.value.showAllCategories)
+        controller.changeQuery("si no es muy tarde")
+        controller.submit()
+        runCurrent()
+
+        assertNull(source.searched.last().second)
+        assertEquals(4, controller.state.value.items.size)
+
+        controller.selectKind(MusicKind.Album)
+        runCurrent()
+        assertFalse(controller.state.value.showAllCategories)
+        assertEquals(listOf("a1"), controller.state.value.items.map { it.id })
+
+        controller.selectAllCategories()
+        runCurrent()
+        assertTrue(controller.state.value.showAllCategories)
+        assertEquals(4, controller.state.value.items.size)
+    }
+
+    @Test fun partialSourceWarningIsPreservedAlongsideResults() = runTest {
+        var attempt = 0
+        val source = object : Source() {
+            override suspend fun search(query: String, kind: MusicKind?, page: String?, pageSize: Int): SourceResult<MusicPage> {
+                attempt++
+                val warning = if (attempt == 1) "No respondieron: SoundCloud" else null
+                return SourceResult.Success(
+                    MusicPage(
+                        items = listOf(MusicItem("s1", query, "Artista", MusicKind.Song, sourceName = "YT Music")),
+                        partialWarning = warning,
+                    )
+                )
+            }
+        }
+        val controller = SearchController(source, backgroundScope, defaultAllCategories = true)
+        controller.changeQuery("yoasobi")
+        controller.submit()
+        runCurrent()
+
+        assertEquals(1, controller.state.value.items.size)
+        assertEquals("No respondieron: SoundCloud", controller.state.value.partialSourceWarning)
+
+        controller.retrySources()
+        runCurrent()
+        assertNull(controller.state.value.partialSourceWarning)
+    }
+
+    @Test fun openAndCloseCollectionPreservesQueryFiltersAndResults() = runTest {
+        val album = MusicItem("https://example.org/playlist?list=1", "LIVE", "Kenshi", MusicKind.Album)
+        val song = MusicItem("https://example.org/watch?v=1", "Kick Back", "Kenshi", MusicKind.Song)
+        val colTrack = MusicItem("https://example.org/watch?v=2", "Lady", "Kenshi", MusicKind.Song)
+        val source = object : Source() {
+            override suspend fun search(query: String, kind: MusicKind?, page: String?, pageSize: Int): SourceResult<MusicPage> {
+                return SourceResult.Success(MusicPage(listOf(song, album)))
+            }
+
+            override suspend fun collectionItems(item: MusicItem): SourceResult<List<MusicItem>> {
+                return SourceResult.Success(listOf(colTrack))
+            }
+        }
+        val controller = SearchController(source, backgroundScope, defaultAllCategories = true)
+        controller.changeQuery("kenshi")
+        controller.submit()
+        runCurrent()
+
+        controller.openCollection(album)
+        runCurrent()
+        assertEquals(album, controller.state.value.selectedCollection)
+        assertEquals(listOf(colTrack), controller.state.value.collectionItems)
+        assertEquals("kenshi", controller.state.value.query)
+
+        controller.closeCollection()
+        assertNull(controller.state.value.selectedCollection)
+        assertEquals("kenshi", controller.state.value.query)
+        assertEquals(listOf(song, album), controller.state.value.items)
+        assertTrue(controller.state.value.showAllCategories)
+    }
 }
