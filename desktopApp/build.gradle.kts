@@ -35,6 +35,8 @@ compose.desktop {
             outputBaseDir.set(project.layout.buildDirectory.dir("shinki-music-dist"))
             targetFormats(TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Shinki music"
+            windows.iconFile.set(project.file("icons/shinki-music.ico"))
+            linux.iconFile.set(project.file("src/main/resources/shinki-music.png"))
             vendor = "JadenYuki4"
             description = "Shinki music de JadenYuki4"
             packageVersion = providers.gradleProperty("shinkiVersion").get()

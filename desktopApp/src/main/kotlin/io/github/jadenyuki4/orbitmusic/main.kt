@@ -2,9 +2,7 @@
 package io.github.jadenyuki4.orbitmusic
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.*
 import io.github.jadenyuki4.orbitmusic.data.NewPipeMusicSource
 import io.github.jadenyuki4.orbitmusic.data.createDesktopHistoryStore
@@ -21,22 +19,13 @@ fun main() = application {
     val sessions = remember { SessionStore() }
     val playback = remember { Playback(source, engine, scope, history, downloader).also { it.persistSession(scope, sessions) } }
     val trayAvailable = remember { SystemTray.isSupported() }
+    val icon = painterResource("shinki-music.png")
     var visible by remember { mutableStateOf(true) }
     DisposableEffect(engine) {
         val keys = mediaKeys(playback, scope)
         onDispose { runCatching { sessions.save(playback.snapshotSession()) }; keys.cancel(); engine.close() }
     }
     if (trayAvailable) {
-        val icon = remember { object : Painter() {
-            override val intrinsicSize = Size.Unspecified
-            override fun DrawScope.onDraw() {
-                val p = Palette()
-                drawCircle(p.background)
-                drawCircle(p.primary, size.minDimension * .38f)
-                drawCircle(p.elevated, size.minDimension * .25f)
-                drawCircle(p.highlight, size.minDimension * .12f)
-            }
-        } }
         Tray(icon, tooltip = "Shinki music", onAction = { visible = true }, menu = {
             Item("Abrir Shinki music", onClick = { visible = true })
             Item("Reproducir / pausar", onClick = engine::toggle)
@@ -48,7 +37,8 @@ fun main() = application {
     }
     Window(visible = visible,
         onCloseRequest = { if (trayAvailable && engine.state.value.playing) visible = false else exitApplication() },
-        title = "Shinki music · Música Hi-Res",
+        title = "Shinki music",
+        icon = icon,
         state = rememberWindowState(width = LayoutTokens(Density.Comfortable, 24f).windowWidth,
             height = LayoutTokens(Density.Comfortable, 24f).windowHeight),
     ) {
