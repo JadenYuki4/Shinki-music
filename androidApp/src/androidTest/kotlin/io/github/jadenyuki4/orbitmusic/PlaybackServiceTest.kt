@@ -18,6 +18,7 @@ class PlaybackServiceTest {
     @Test fun resumeDownloadedSongFromSavedPosition() = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as OrbitApplication
+        val sessionStore = SessionStore().also { it.clear() }
         val item = MusicItem("qa-resume", "Pista de prueba de reanudación", "QA", MusicKind.Song, durationSeconds = 60)
         val clip = File(app.cacheDir, "resume-test.wav")
         val length = 8000 * 2 * 60
@@ -28,12 +29,19 @@ class PlaybackServiceTest {
         clip.outputStream().use { it.write(header.array()); it.write(ByteArray(length)) }
         app.history.saveDownload(DownloadedTrack(item, clip.absolutePath, "audio/wav"))
         val player = withContext(Dispatchers.Main) { app.playback }
-        withContext(Dispatchers.Main) { player.select(item, 15) }
+        withContext(Dispatchers.Main) {
+            player.autoplay.value = false
+            player.select(item, 15)
+        }
         withTimeout(30000) { player.engine.state.first { it.track?.id == item.id && it.position in 15..25 } }
-        withContext(Dispatchers.Main) { player.engine.toggle() }
-        withTimeout(10000) { player.engine.state.first { !it.playing } }
         withTimeout(10000) {
-            while (SessionStore().load()?.let { it.currentTrackId == item.id && it.positionSeconds >= 15 } != true) delay(200)
+            while (sessionStore.load()?.let { it.currentTrackId == item.id && it.positionSeconds >= 20 } != true) delay(200)
+        }
+        assertTrue(player.engine.state.value.playing)
+        withContext(Dispatchers.Main) { player.engine.toggle() }
+        val paused = withTimeout(10000) { player.engine.state.first { !it.playing } }
+        withTimeout(10000) {
+            while (sessionStore.load()?.let { it.currentTrackId == item.id && it.positionSeconds == paused.position } != true) delay(200)
         }
     }
 

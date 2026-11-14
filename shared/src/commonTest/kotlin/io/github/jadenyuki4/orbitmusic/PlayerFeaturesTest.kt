@@ -72,6 +72,8 @@ class PlayerFeaturesTest {
     }
 
     @Test fun stableReleaseTagsCompareNumerically() {
+        assertTrue(newerRelease("v5.3.1", "5.3.0"))
+        assertFalse(newerRelease("v5.3.0", "5.3.1"))
         assertTrue(newerRelease("v5.10.0", "5.2.8"))
         assertFalse(newerRelease("v5.2.8", "5.2.8"))
         assertFalse(newerRelease("v4.12.9", "5.2.8"))
@@ -109,7 +111,6 @@ class PlayerFeaturesTest {
         player.playFrom(a, listOf(a, b))
         runCurrent()
 
-        // Volume down / up / mute
         assertEquals(1f, player.volume.value, 0.01f)
         player.volumeDown(0.2f)
         assertEquals(0.8f, player.volume.value, 0.01f)
@@ -123,13 +124,11 @@ class PlayerFeaturesTest {
         assertFalse(player.muted.value)
         assertEquals(0.9f, player.volume.value, 0.01f)
 
-        // Seek relative (-10s / +10s)
         player.seekBy(30)
         assertEquals(30L, engine.state.value.position)
         player.seekBy(-10)
         assertEquals(20L, engine.state.value.position)
 
-        // Switch Audio Quality to Low (lighter file size) and Format to M4A while playing
         player.setAudioQuality(AudioQuality.Low)
         runCurrent()
         assertEquals(AudioQuality.Low, player.audioQuality.value)
@@ -141,7 +140,6 @@ class PlayerFeaturesTest {
         assertEquals(AudioFormatPreference.M4A, player.audioFormat.value)
         assertEquals(AudioFormatPreference.M4A, source.streamRequests.last().third)
 
-        // Sound profile DSP switch
         player.setSoundProfile(SoundProfile.BassBoost)
         assertEquals(SoundProfile.BassBoost, engine.lastProfile)
     }
@@ -468,7 +466,7 @@ class PlayerFeaturesTest {
         store.save(mutedSnapshot)
 
         val thirdPlayer = Playback(source, recordingEngine(), backgroundScope)
-        thirdPlayer.restoreSession(store.load()!!)
+        thirdPlayer.restoreSession(assertNotNull(store.load()))
         assertTrue(thirdPlayer.muted.value)
         assertEquals(0f, thirdPlayer.volume.value, 0.01f)
         thirdPlayer.toggleMute()
