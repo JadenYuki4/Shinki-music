@@ -29,7 +29,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fakeroot libmpv2
       - name: Build Linux distribution
         if: runner.os == 'Linux'
-        run: bash gradlew :shared:jvmTest :desktopApp:packageDeb :desktopApp:createDistributable
+        run: bash gradlew -PshinkiLinuxX64 :shared:jvmTest :desktopApp:prepareLinuxInstaller :desktopApp:createDistributable
+      - name: Package for Debian and Fedora
+        if: runner.os == 'Linux'
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.49.0
+          export SHINKI_VERSION="$(sed -n 's/^shinkiVersion=//p' gradle.properties)"
+          dir=desktopApp/build/linux-installer
+          "$(go env GOPATH)/bin/nfpm" package -f desktopApp/packaging/linux/nfpm.yaml -p deb -t "$dir/shinki-music_${SHINKI_VERSION}_amd64.deb"
+          "$(go env GOPATH)/bin/nfpm" package -f desktopApp/packaging/linux/nfpm.yaml -p rpm -t "$dir/shinki-music-${SHINKI_VERSION}.x86_64.rpm"
       - name: Build Linux AppImage
         if: runner.os == 'Linux'
         shell: bash
@@ -51,6 +59,7 @@ jobs:
           if-no-files-found: error
           path: |
             desktopApp/build/shinki-music-dist/main/msi/*.msi
-            desktopApp/build/shinki-music-dist/main/deb/*.deb
+            desktopApp/build/linux-installer/*.deb
+            desktopApp/build/linux-installer/*.rpm
             *.AppImage
             androidApp/build/outputs/apk/debug/*.apk

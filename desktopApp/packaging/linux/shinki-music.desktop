@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Shinki music
+Exec=shinki-music
+Icon=shinki-music
+Terminal=false
+Categories=AudioVideo;Audio;Player;

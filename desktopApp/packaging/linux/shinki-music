@@ -1,0 +1,2 @@
+#!/bin/sh
+exec java -Dcompose.application.resources.dir=/usr/lib/shinki-music -cp '/usr/lib/shinki-music/lib/*' io.github.jadenyuki4.orbitmusic.MainKt "$@"

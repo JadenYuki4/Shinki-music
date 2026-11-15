@@ -12,7 +12,7 @@ kotlin { jvmToolchain(17) }
 dependencies {
     implementation(project(":shared"))
 
-    implementation(compose.desktop.currentOs)
+    implementation(if (providers.gradleProperty("shinkiLinuxX64").isPresent) compose.desktop.linux_x64 else compose.desktop.currentOs)
     implementation("net.java.dev.jna:jna:5.17.0")
     testImplementation(kotlin("test-junit"))
     implementation(libs.kotlinx.coroutinesSwing)
@@ -23,6 +23,16 @@ dependencies {
 tasks.test {
     systemProperty("orbit.mediaKeysQA", providers.gradleProperty("mediaKeysQA").getOrElse("false"))
     systemProperty("orbit.live", providers.gradleProperty("orbitLive").getOrElse("false"))
+}
+
+if (providers.gradleProperty("shinkiLinuxX64").isPresent) {
+    tasks.register<Sync>("prepareLinuxInstaller") {
+        from(tasks.jar)
+        from(configurations.runtimeClasspath) {
+            eachFile { name = "${file.parentFile.name}-$name" }
+        }
+        into(layout.buildDirectory.dir("linux-installer/lib"))
+    }
 }
 
 compose.desktop {

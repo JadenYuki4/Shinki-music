@@ -61,12 +61,29 @@ Para generar la variante optimizada usá `:androidApp:assembleRelease`. Gradle d
 
 El instalador se genera en `desktopApp/build/shinki-music-dist/main/msi/`.
 
-**Linux** · En una distribución compatible con estos paquetes:
+**Linux x86-64** · Para instalar el paquete local y sus dependencias:
+
+```sh
+# Debian
+sudo apt install ./shinki-music_5.3.8_amd64.deb
+# Fedora
+sudo dnf install ./shinki-music-5.3.8.x86_64.rpm
+```
+
+Para generar ambos paquetes desde el código, instalá nFPM y ejecutá desde la raíz:
+
+```sh
+export SHINKI_VERSION="$(sed -n 's/^shinkiVersion=//p' gradle.properties)"
+bash gradlew -PshinkiLinuxX64 :desktopApp:prepareLinuxInstaller
+nfpm package -f desktopApp/packaging/linux/nfpm.yaml -p deb -t "shinki-music_${SHINKI_VERSION}_amd64.deb"
+nfpm package -f desktopApp/packaging/linux/nfpm.yaml -p rpm -t "shinki-music-${SHINKI_VERSION}.x86_64.rpm"
+```
+
+Para ejecutar desde el código en Debian:
 
 ```sh
 sudo apt install libmpv2 python3-gi gir1.2-glib-2.0 fakeroot
 bash gradlew :desktopApp:run
-bash gradlew :desktopApp:packageDeb
 ```
 
 **Pruebas** · Ejecutá `.\gradlew.bat :shared:jvmTest :shared:testAndroidHostTest :desktopApp:test` para la lógica compartida, Android host y escritorio. Con un dispositivo Android conectado, usá `:androidApp:connectedDebugAndroidTest`.

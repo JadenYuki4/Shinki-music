@@ -1,0 +1,36 @@
+name: shinki-music
+arch: amd64
+platform: linux
+version: ${SHINKI_VERSION}
+maintainer: JadenYuki4 <shinkimusic.budget831@passmail.net>
+description: Reproductor de música de escritorio con búsqueda, cola y controles multimedia.
+homepage: https://github.com/JadenYuki4/Shinki-music
+license: GPL-3.0-or-later
+section: sound
+overrides:
+  deb:
+    depends:
+      - java17-runtime
+      - libmpv2
+      - python3-gi
+      - gir1.2-glib-2.0
+  rpm:
+    depends:
+      - java >= 17
+      - libmpv.so.2()(64bit)
+      - python3-gobject
+contents:
+  - src: desktopApp/build/linux-installer/lib/*.jar
+    dst: /usr/lib/shinki-music/lib/
+  - src: desktopApp/resources/linux/media_keys.py
+    dst: /usr/lib/shinki-music/media_keys.py
+  - src: desktopApp/packaging/linux/shinki-music
+    dst: /usr/bin/shinki-music
+    file_info:
+      mode: 0755
+  - src: desktopApp/packaging/linux/shinki-music.desktop
+    dst: /usr/share/applications/shinki-music.desktop
+  - src: desktopApp/src/main/resources/shinki-music.png
+    dst: /usr/share/pixmaps/shinki-music.png
+  - src: LICENSE
+    dst: /usr/share/licenses/shinki-music/LICENSE
