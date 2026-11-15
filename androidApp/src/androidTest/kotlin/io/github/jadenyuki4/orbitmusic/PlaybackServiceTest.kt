@@ -9,6 +9,9 @@ import androidx.media3.session.SessionToken
 import java.util.concurrent.TimeUnit
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.jadenyuki4.orbitmusic.domain.*
 import kotlinx.coroutines.*
@@ -29,6 +32,37 @@ class PlaybackServiceTest {
             .put("data".toByteArray()).putInt(length)
         clip.outputStream().use { it.write(header.array()); it.write(ByteArray(length)) }
         return clip
+    }
+
+    @Test fun songAdvancesWhileRecorderHoldsTransientFocus() = runBlocking {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val manager = context.getSystemService(AudioManager::class.java)
+        val recorderFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setOnAudioFocusChangeListener { }
+            .build()
+        val app = context.applicationContext as OrbitApplication
+        val song = MusicItem("voice-note", "Canción", "Prueba", MusicKind.Song, durationSeconds = 60)
+        val clip = resumeClip(context)
+        app.history.saveDownload(DownloadedTrack(song, clip.absolutePath, "audio/wav"))
+        val playback = withContext(Dispatchers.Main) { app.playback }
+        try {
+            withContext(Dispatchers.Main) {
+                playback.select(song)
+            }
+            val started = withTimeout(15000) { playback.engine.state.first { it.track?.id == song.id && it.position >= 1 } }
+            assertEquals(AudioManager.AUDIOFOCUS_REQUEST_GRANTED, manager.requestAudioFocus(recorderFocus))
+            withTimeout(6000) { playback.engine.state.first { it.track?.id == song.id && it.position >= started.position + 3 } }
+            Unit
+        } finally {
+            manager.abandonAudioFocusRequest(recorderFocus)
+            withContext(Dispatchers.Main) {
+                if (playback.engine.state.value.playing) playback.engine.toggle()
+            }
+            clip.delete()
+        }
     }
 
     @Test fun resumeDownloadedSongFromSavedPosition() = runBlocking {

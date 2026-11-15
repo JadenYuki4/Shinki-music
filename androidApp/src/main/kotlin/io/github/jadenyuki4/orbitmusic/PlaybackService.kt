@@ -2,6 +2,8 @@
 package io.github.jadenyuki4.orbitmusic
 
 import android.media.audiofx.Equalizer
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import kotlinx.coroutines.*
 import io.github.jadenyuki4.orbitmusic.domain.ShinkiAppInfo
 import android.app.PendingIntent
@@ -23,6 +25,7 @@ import kotlinx.coroutines.flow.map
 
 class PlaybackService : MediaSessionService() {
     private lateinit var session: MediaSession
+    private lateinit var musicFocus: AudioFocusRequest
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var effect: Equalizer? = null
@@ -57,9 +60,21 @@ class PlaybackService : MediaSessionService() {
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setDeviceVolumeControlEnabled(true)
-            .setAudioAttributes(audio, true)
+            .setAudioAttributes(audio, false)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .setHandleAudioBecomingNoisy(true)
+            .build()
+        val audioManager = getSystemService(AudioManager::class.java)
+        // Android no identifica al dueño de una interrupción transitoria: una nota de voz
+        // también puede pedir foco exclusivo. Conservamos el avance hasta una pérdida permanente.
+        musicFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build())
+            .setOnAudioFocusChangeListener { change ->
+                if (change == AudioManager.AUDIOFOCUS_LOSS) player.pause()
+            }
             .build()
         val playback = (application as OrbitApplication).playback
         val settings = playback.equalizerState
@@ -69,6 +84,16 @@ class PlaybackService : MediaSessionService() {
             applyBands(settings.value)
         }
         player.addListener(object : Player.Listener {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playWhenReady) {
+                    if (audioManager.requestAudioFocus(musicFocus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                        player.pause()
+                    }
+                } else {
+                    audioManager.abandonAudioFocusRequest(musicFocus)
+                }
+            }
+
             override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) {
                 val max = player.deviceInfo.maxVolume
                 if (max > 0) (playback.engine as AndroidEngine).reportDeviceVolume(if (muted) 0f else volume.toFloat() / max, playback)
@@ -124,6 +149,7 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
 
     override fun onDestroy() {
+        getSystemService(AudioManager::class.java).abandonAudioFocusRequest(musicFocus)
         scope.cancel()
         effect?.release()
         effect = null
