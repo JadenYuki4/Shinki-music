@@ -8,10 +8,11 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerFeaturesTest {
-    private fun song(id: String) = MusicItem(id, id, "Artist", MusicKind.Song)
+    private fun song(id: String) = MusicItem(id, id, "Artist", MusicKind.Song, durationSeconds = 200L)
     private val a = song("A")
     private val b = song("B")
     private val c = song("C")
+    private val d = song("D")
     private val source = object : MusicSource {
         val streamRequests = mutableListOf<Triple<String, AudioQuality, AudioFormatPreference>>()
         override suspend fun stream(songId: String) = SourceResult.Success(AudioStream(songId, "audio/test"))
@@ -472,5 +473,242 @@ class PlayerFeaturesTest {
         thirdPlayer.toggleMute()
         assertFalse(thirdPlayer.muted.value)
         assertEquals(0.42f, thirdPlayer.volume.value, 0.01f)
+    }
+
+    @Test fun fixedQueueLocalAndStreamingNextAndSeekBehaveDeterministically() = runTest {
+        val queue = listOf(a, b, c, d)
+
+        // 1) Local/offline files with async engine state update (simulating MpvEngine / AndroidEngine).
+        val pendingLoads = ArrayDeque<Pair<MusicItem, AudioStream>>()
+        val asyncLocalEngine = object : AudioEngine {
+            override val state = MutableStateFlow(Transport())
+            val loads = mutableListOf<String>()
+            fun flushLoads() {
+                while (pendingLoads.isNotEmpty()) {
+                    val (t, _) = pendingLoads.removeFirst()
+                    loads += t.id
+                    state.value = Transport(t, playing = true, position = 0L, duration = 200L)
+                }
+            }
+            override fun load(track: MusicItem, stream: AudioStream) {
+                pendingLoads.addLast(track to stream)
+            }
+            override fun toggle() { state.value = state.value.copy(playing = !state.value.playing) }
+            override fun seek(seconds: Long) { state.value = state.value.copy(position = seconds) }
+            override fun volume(value: Float) {}
+            override fun speed(value: Float) {}
+        }
+        val localPaths = queue.associate { it.id to "/offline/${it.id}.wav" }
+        val localDownloader = object : TrackDownloader {
+            override val downloadsDirectoryPath: String = "/offline"
+            override suspend fun downloadToLocal(item: MusicItem, stream: AudioStream, onProgress: (Float?) -> Unit) =
+                DownloadedAudioFile("/offline/${item.id}.wav", stream.mimeType, 1024L)
+            override fun exists(localPath: String): Boolean = localPath in localPaths.values
+            override fun delete(localPath: String) {}
+        }
+        val localPlayer = Playback(source, asyncLocalEngine, backgroundScope, downloader = localDownloader)
+        localPlayer.shuffle.value = false
+        localPlayer.repeat.value = RepeatMode.Off
+        localPlayer.autoplay.value = false
+        queue.forEach { localPlayer.history.saveDownload(DownloadedTrack(it, localPaths.getValue(it.id), "audio/wav")) }
+
+        localPlayer.playFrom(a, queue)
+        runCurrent()
+        asyncLocalEngine.flushLoads()
+        runCurrent()
+        assertEquals("A", asyncLocalEngine.state.value.track?.id)
+        assertEquals(0L, asyncLocalEngine.state.value.position)
+        assertEquals(listOf("A", "B", "C", "D"), localPlayer.queue.value.map { it.id })
+
+        // Forward 10 seconds from start keeps A and advances position to 10s.
+        localPlayer.seekBy(10)
+        assertEquals("A", asyncLocalEngine.state.value.track?.id)
+        assertEquals(10L, asyncLocalEngine.state.value.position)
+        assertEquals(listOf("A", "B", "C", "D"), localPlayer.queue.value.map { it.id })
+
+        // Single next from A -> plays B exactly once and preserves queue order.
+        localPlayer.next()
+        runCurrent()
+        asyncLocalEngine.flushLoads()
+        runCurrent()
+        assertEquals("B", asyncLocalEngine.state.value.track?.id)
+        assertEquals(listOf("A", "B"), asyncLocalEngine.loads)
+        assertEquals(listOf("A", "B", "C", "D"), localPlayer.queue.value.map { it.id })
+
+        // Intentional double next from A while B has not yet updated engine.state must reach C.
+        localPlayer.playFrom(a, queue)
+        runCurrent()
+        asyncLocalEngine.flushLoads()
+        runCurrent()
+        localPlayer.next()
+        runCurrent() // B is loaded into asyncLocalEngine queue, engine.state still shows A!
+        localPlayer.next()
+        runCurrent()
+        asyncLocalEngine.flushLoads()
+        runCurrent()
+        assertEquals("C", asyncLocalEngine.state.value.track?.id, "Intentional double Next with async local engine must reach C")
+
+        // 2) Streaming source with suspended resolution while B is still loading.
+        val deferredStreams = mutableMapOf<String, CompletableDeferred<SourceResult<AudioStream>>>()
+        val gatedSource = object : MusicSource {
+            override suspend fun suggestions(query: String) = SourceResult.Success(emptyList<String>())
+            override suspend fun search(query: String, kind: MusicKind?, page: String?, pageSize: Int) = SourceResult.Success(MusicPage(queue))
+            override suspend fun discover(page: String?, pageSize: Int) = SourceResult.Success(MusicPage(emptyList()))
+            override suspend fun stream(songId: String) =
+                deferredStreams.getOrPut(songId) { CompletableDeferred() }.await()
+            override suspend fun stream(songId: String, quality: AudioQuality, format: AudioFormatPreference) = stream(songId)
+        }
+        val streamEngine = Engine()
+        val streamPlayer = Playback(gatedSource, streamEngine, backgroundScope)
+        streamPlayer.shuffle.value = false
+        streamPlayer.repeat.value = RepeatMode.Off
+        streamPlayer.autoplay.value = false
+
+        streamPlayer.playFrom(a, queue)
+        runCurrent()
+        deferredStreams.getValue("A").complete(SourceResult.Success(AudioStream("https://cdn/A.m4a", "audio/mp4")))
+        runCurrent()
+        assertEquals("A", streamEngine.state.value.track?.id)
+        streamPlayer.seekBy(10)
+        assertEquals("A", streamEngine.state.value.track?.id)
+        assertEquals(10L, streamEngine.state.value.position)
+
+        // Two intentional Next presses while B is still loading (pending) must cancel B and land on C.
+        streamPlayer.next()
+        runCurrent()
+        assertEquals("B", streamPlayer.pending.value?.id)
+        streamPlayer.next()
+        runCurrent()
+        assertEquals("C", streamPlayer.pending.value?.id, "Second Next while B is resolving must advance pending to C")
+        deferredStreams.getValue("C").complete(SourceResult.Success(AudioStream("https://cdn/C.m4a", "audio/mp4")))
+        runCurrent()
+        assertEquals("C", streamEngine.state.value.track?.id)
+        assertEquals(listOf("A", "B", "C", "D"), streamPlayer.queue.value.map { it.id })
+
+        // Single Next on a restored session starting on A advances to B (not re-selecting A).
+        val restoredPlayer = Playback(source, Engine(), backgroundScope)
+        restoredPlayer.restoreSession(
+            SavedPlaybackSession(
+                queue = queue,
+                currentTrackId = "A",
+                positionSeconds = 25L,
+                shuffle = false,
+                repeat = RepeatMode.Off,
+                quality = AudioQuality.High,
+                format = AudioFormatPreference.Auto,
+                profile = SoundProfile.AnimeOST,
+                autoplay = false,
+            )
+        )
+        restoredPlayer.next()
+        runCurrent()
+        assertEquals("B", restoredPlayer.engine.state.value.track?.id)
+
+        // Failed resolution on B followed by Next advances to C rather than retrying B.
+        val failOnceSource = object : MusicSource by source {
+            override suspend fun stream(songId: String, quality: AudioQuality, format: AudioFormatPreference): SourceResult<AudioStream> =
+                if (songId == "B") SourceResult.Failure(SourceError.Network) else super.stream(songId, quality, format)
+        }
+        val retryAfterFailEngine = Engine()
+        val retryAfterFailPlayer = Playback(failOnceSource, retryAfterFailEngine, backgroundScope)
+        retryAfterFailPlayer.autoplay.value = false
+        retryAfterFailPlayer.playFrom(a, queue)
+        runCurrent()
+        retryAfterFailPlayer.next()
+        runCurrent()
+        retryAfterFailPlayer.next()
+        runCurrent()
+        assertEquals("C", retryAfterFailEngine.state.value.track?.id)
+    }
+
+    @Test fun eofCoincidenceWithManualNextDoesNotSkipBAndPreservesModes() = runTest {
+        val queue = listOf(a, b, c, d)
+
+        // Case 1: Auto-advance A -> B on EOF coinciding with a manual Next does not skip B; a second manual Next goes to C.
+        val engine1 = Engine()
+        val p1 = Playback(source, engine1, backgroundScope)
+        p1.shuffle.value = false
+        p1.repeat.value = RepeatMode.Off
+        p1.autoplay.value = false
+        p1.playFrom(a, queue)
+        runCurrent()
+
+        engine1.state.value = engine1.state.value.copy(playing = false, ended = true)
+        runCurrent()
+        assertEquals("B", engine1.state.value.track?.id)
+
+        // Single manual Next coinciding right after A ended stays on B.
+        p1.next()
+        runCurrent()
+        assertEquals("B", engine1.state.value.track?.id, "Coincident manual Next at EOF of A must not skip B")
+
+        // Second intentional manual Next advances to C.
+        p1.next()
+        runCurrent()
+        assertEquals("C", engine1.state.value.track?.id)
+
+        // Normal single manual Next once B has played past position > 1s advances to D immediately.
+        engine1.state.value = engine1.state.value.copy(playing = false, ended = true)
+        runCurrent()
+        assertEquals("D", engine1.state.value.track?.id)
+        engine1.state.value = engine1.state.value.copy(position = 5L)
+        val p2 = Playback(source, Engine().also { }, backgroundScope)
+        p2.autoplay.value = false
+        p2.playFrom(a, queue)
+        runCurrent()
+        p2.engine.state.value.let { st ->
+            (p2.engine as Engine).state.value = st.copy(playing = false, ended = true)
+        }
+        runCurrent()
+        (p2.engine as Engine).state.value = p2.engine.state.value.copy(position = 4L)
+        p2.next()
+        runCurrent()
+        assertEquals("C", p2.engine.state.value.track?.id)
+
+        // Case 2: Manual Next triggered right before A emits ended = true does not skip B.
+        val deferred = mutableMapOf<String, CompletableDeferred<SourceResult<AudioStream>>>()
+        val gatedSource = object : MusicSource by source {
+            override suspend fun stream(songId: String) = deferred.getOrPut(songId) { CompletableDeferred() }.await()
+            override suspend fun stream(songId: String, quality: AudioQuality, format: AudioFormatPreference) = stream(songId)
+        }
+        val engine3 = Engine()
+        val p3 = Playback(gatedSource, engine3, backgroundScope)
+        p3.autoplay.value = false
+        p3.playFrom(a, queue)
+        runCurrent()
+        deferred.getValue("A").complete(SourceResult.Success(AudioStream("A", "audio/test")))
+        runCurrent()
+        p3.next() // Manual Next starts loading B
+        engine3.state.value = engine3.state.value.copy(playing = false, ended = true) // A finishes simultaneously
+        runCurrent()
+        deferred.getValue("B").complete(SourceResult.Success(AudioStream("B", "audio/test")))
+        runCurrent()
+        assertEquals("B", engine3.state.value.track?.id, "EOF of A arriving while manual B loads must not skip B")
+
+        // Case 3: Manual playNext preservation and RepeatMode.All / RepeatMode.One / Shuffle behavior.
+        val engine4 = Engine()
+        val p4 = Playback(source, engine4, backgroundScope)
+        p4.autoplay.value = false
+        val manual = song("M")
+        p4.playFrom(a, listOf(a, b))
+        runCurrent()
+        p4.playNext(manual)
+        assertEquals(listOf("A", "M", "B"), p4.queue.value.map { it.id })
+        p4.next()
+        runCurrent()
+        assertEquals("M", engine4.state.value.track?.id)
+
+        p4.repeat.value = RepeatMode.One
+        p4.next() // Manual Next ignores RepeatMode.One and advances M -> B
+        runCurrent()
+        assertEquals("B", engine4.state.value.track?.id)
+        engine4.state.value = engine4.state.value.copy(playing = false, ended = true) // Natural EOF repeats B
+        runCurrent()
+        assertEquals("B", engine4.state.value.track?.id)
+
+        p4.repeat.value = RepeatMode.All
+        p4.next() // Manual Next wraps B -> A
+        runCurrent()
+        assertEquals("A", engine4.state.value.track?.id)
     }
 }

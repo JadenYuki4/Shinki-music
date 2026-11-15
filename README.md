@@ -4,7 +4,7 @@
 
 **Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá música en YouTube Music, YouTube, SoundCloud o Bandcamp, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
 
-**Aurora 5.3.6** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.6/Shinki-music-5.3.6.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.6/Shinki-music-5.3.6.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
+**Aurora 5.3.7** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
 ## Escuchar a tu manera
 
@@ -35,7 +35,7 @@ La distribución del escritorio toma como referencia a [Limusic](https://github.
 
 ## Compilar desde el código
 
-Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.6 ofrece APK y MSI. Para Linux podés compilar desde el código.
+Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.7 ofrece APK y MSI. Para Linux podés compilar desde el código.
 
 **Android** · En Windows, con un teléfono o emulador conectado:
 

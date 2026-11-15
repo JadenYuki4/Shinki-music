@@ -27,7 +27,9 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
     private var api: Mpv? = null
     private var handle: Pointer? = null
+    private var loadJob: Job? = null
     private var polling: Job? = null
+    private var fileStarted = false
     private var lastTrack: MusicItem? = null
     private var lastStream: AudioStream? = null
     private var ended = false
@@ -85,22 +87,25 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
 
     override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
     override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
-        scope.launch {
-            polling?.cancel()
+        val targetStart = seconds.coerceAtLeast(0L)
+        loadJob?.cancel()
+        polling?.cancel()
+        lastTrack = track
+        lastStream = stream
+        ended = false
+        fileStarted = false
+        state.value = Transport(track, playing = true, position = targetStart, duration = track.durationSeconds ?: 0)
+        loadJob = scope.launch {
             try {
                 open()
-                drainEvents()
-                lastTrack = track
-                lastStream = stream
-                ended = false
-                val targetStart = seconds.coerceAtLeast(0L)
+                drainEvents(ignore = true)
+                fileStarted = false
                 seekGraceUntilNs = if (targetStart > 0L) System.nanoTime() + 1_200_000_000L else 0L
                 command("set", "start", targetStart.toString())
                 command("loadfile", stream.url, "replace")
                 applySoundProfile(activeProfile)
                 runCatching { command("set", "volume", (targetVolume * 100f).toString()) }
                 command("set", "pause", "no")
-                state.value = Transport(track, playing = true, position = targetStart, duration = track.durationSeconds ?: 0)
                 polling = launch {
                     while (isActive && !ended) {
                         drainEvents()
@@ -114,10 +119,16 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
                         delay(if (state.value.playing) 500 else 1500)
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: LinkageError) {
-                state.value = Transport(track, error = "libmpv no está disponible. Verificá la biblioteca de audio nativa y reintentá.")
+                if (lastTrack?.id == track.id) {
+                    state.value = Transport(track, error = "libmpv no está disponible. Verificá la biblioteca de audio nativa y reintentá.")
+                }
             } catch (e: Exception) {
-                state.value = Transport(track, error = "No se pudo inicializar libmpv o abrir esta pista.")
+                if (lastTrack?.id == track.id) {
+                    state.value = Transport(track, error = "No se pudo inicializar libmpv o abrir esta pista.")
+                }
             }
         }
     }
@@ -136,19 +147,22 @@ class MpvEngine(private val audioOutput: String? = null) : AudioEngine, AutoClos
         return if (library.mpv_get_property(context, property, 3, value) >= 0) value.value != 0 else null
     }
 
-    private fun drainEvents() {
+    private fun drainEvents(ignore: Boolean = false) {
         val library = checkNotNull(api) { "libmpv no está inicializada." }
         val context = checkNotNull(handle) { "El contexto de libmpv no está abierto." }
         while (true) {
             val event = library.mpv_wait_event(context, 0.0)
             when (event.getInt(0)) {
                 0 -> return // MPV_EVENT_NONE
+                6, 8 -> if (!ignore) fileStarted = true // MPV_EVENT_START_FILE / MPV_EVENT_FILE_LOADED
                 7 -> { // MPV_EVENT_END_FILE, data is mpv_event_end_file*
-                    val reason = event.getPointer(16)?.getInt(0)
-                    if (reason == 0 || reason == 4) {
-                        ended = true
-                        state.value = state.value.copy(playing = false, ended = reason == 0,
-                            error = if (reason == 4) "La reproducción terminó con un error. Reintentá para obtener un enlace nuevo." else null)
+                    if (!ignore && fileStarted) {
+                        val reason = event.getPointer(16)?.getInt(0)
+                        if (reason == 0 || reason == 4) {
+                            ended = true
+                            state.value = state.value.copy(playing = false, ended = reason == 0,
+                                error = if (reason == 4) "La reproducción terminó con un error. Reintentá para obtener un enlace nuevo." else null)
+                        }
                     }
                 }
             }

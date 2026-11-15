@@ -121,12 +121,12 @@ class PlaybackServiceTest {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    @Test fun skipDebouncePreventsDoubleNextSkipAndPreservesVolumeControl() = runBlocking {
+    @Test fun intentionalRapidNextReachesThirdTrackAndSingleNextPlaysSecond() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val app = context.applicationContext as OrbitApplication
         val clip = resumeClip(app)
-        val tracks = (1..3).map { index ->
-            MusicItem("qa-debounce-$index", "Debounce $index", "Artista", MusicKind.Song, durationSeconds = 60)
+        val tracks = (1..4).map { index ->
+            MusicItem("qa-next-$index", "Track $index", "Artista", MusicKind.Song, durationSeconds = 60)
         }
         tracks.forEach { app.history.saveDownload(DownloadedTrack(it, clip.absolutePath, "audio/wav")) }
         val future = withContext(Dispatchers.Main) {
@@ -139,19 +139,70 @@ class PlaybackServiceTest {
             withContext(Dispatchers.Main) {
                 val playback = app.playback
                 playback.autoplay.value = false
-                playback.clearQueue()
-                playback.enqueue(tracks[1])
-                playback.enqueue(tracks[2])
-                playback.playFromSearch(tracks[0])
+                playback.shuffle.value = false
+                playback.repeat.value = RepeatMode.Off
+                playback.playFrom(tracks[0], tracks)
                 withTimeout(20000) {
-                    while (controller.currentMediaItem?.mediaId != tracks[0].id || !controller.isPlaying) delay(100)
+                    while (controller.currentMediaItem?.mediaId != tracks[0].id ||
+                        playback.engine.state.value.track?.id != tracks[0].id ||
+                        !controller.isPlaying
+                    ) delay(100)
                 }
-                delay(300)
-                // Fire two rapid Next requests inside the 250ms debounce window.
+
+                // Seek forward 10s keeps track A and advances position.
+                playback.seekBy(10)
+                withTimeout(10000) {
+                    while (playback.engine.state.value.position < 9) delay(100)
+                }
+                assertEquals(tracks[0].id, playback.engine.state.value.track?.id)
+
+                // Single Next from A plays B once and preserves queue order.
+                delay(200)
                 controller.seekToNextMediaItem()
+                withTimeout(15000) {
+                    while (controller.currentMediaItem?.mediaId != tracks[1].id ||
+                        playback.engine.state.value.track?.id != tracks[1].id
+                    ) delay(50)
+                }
+                delay(400)
+                assertEquals(tracks[1].id, playback.engine.state.value.track?.id)
+                assertEquals(tracks.map { it.id }, playback.queue.value.map { it.id })
+
+                // Two rapid intentional Next requests from A reach C.
+                playback.playFrom(tracks[0], tracks)
+                withTimeout(15000) {
+                    while (controller.currentMediaItem?.mediaId != tracks[0].id ||
+                        playback.engine.state.value.track?.id != tracks[0].id ||
+                        !controller.isPlaying
+                    ) delay(50)
+                }
+                delay(200)
+                controller.seekToNextMediaItem()
+                controller.seekToNextMediaItem()
+                withTimeout(15000) {
+                    while (controller.currentMediaItem?.mediaId != tracks[2].id ||
+                        playback.engine.state.value.track?.id != tracks[2].id
+                    ) delay(50)
+                }
+                delay(400)
+                assertEquals(tracks[2].id, playback.engine.state.value.track?.id)
+
+                // Manual Next coinciding with natural EOF of A does not skip B.
+                playback.playFrom(tracks[0], tracks)
+                withTimeout(15000) {
+                    while (controller.currentMediaItem?.mediaId != tracks[0].id ||
+                        playback.engine.state.value.track?.id != tracks[0].id ||
+                        !controller.isPlaying
+                    ) delay(50)
+                }
+                controller.seekTo(59_300L)
+                withTimeout(15000) {
+                    playback.engine.state.first { it.track?.id == tracks[1].id }
+                }
                 controller.seekToNextMediaItem()
                 delay(450)
                 assertEquals(tracks[1].id, playback.engine.state.value.track?.id)
+
                 val initial = controller.deviceVolume
                 val max = controller.deviceInfo.maxVolume
                 if (max > 0) {

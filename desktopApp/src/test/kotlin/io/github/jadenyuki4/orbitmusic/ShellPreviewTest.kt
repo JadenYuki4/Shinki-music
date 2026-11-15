@@ -458,4 +458,89 @@ class ShellPreviewTest {
             scope.cancel()
         }
     }
+
+    @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+    @Test
+    fun uiNextAndSeekButtonsAndShortcutsSingleTapOnDesktopAndMobile() {
+        val tracks = listOf("A", "B", "C", "D").map { id ->
+            MusicItem(id = id, title = "Track $id", subtitle = "Artist $id", kind = MusicKind.Song, durationSeconds = 180L)
+        }
+        val uiSource = object : MusicSource by PreviewMusicSource {
+            override suspend fun stream(songId: String) =
+                stream(songId, AudioQuality.High, AudioFormatPreference.Auto)
+            override suspend fun stream(songId: String, quality: AudioQuality, format: AudioFormatPreference) =
+                SourceResult.Success(
+                    AudioStream(
+                        url = "https://example.com/$songId.opus",
+                        mimeType = "audio/opus",
+                        bitrateKbps = 160,
+                        formatLabel = "Opus",
+                    )
+                )
+        }
+        val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
+        try {
+            val engine = FakeAudioEngine(tracks.first())
+            val history = InMemoryHistoryStore()
+            val playback = Playback(uiSource, engine, scope, history)
+            playback.autoplay.value = false
+            playback.shuffle.value = false
+            playback.repeat.value = RepeatMode.Off
+            val model = SearchViewModel(uiSource, history)
+
+            withSingleThreadScene(
+                width = 360,
+                height = 800,
+                content = { OrbitTheme(ThemeSettings()) { MusicShell(model, playback) {} } },
+            ) { scene ->
+                playback.playFrom(tracks[0], tracks)
+                pump(scene, 10)
+                clickNode(scene, "Fuentes", pumpFrames = 12)
+                assertEquals("A", playback.engine.state.value.track?.id)
+
+                clickNode(scene, "Siguiente canción", pumpFrames = 12)
+                assertEquals("B", playback.engine.state.value.track?.id)
+                assertEquals(listOf("A", "B", "C", "D"), playback.queue.value.map { it.id })
+
+                clickNode(scene, "Abrir reproductor", pumpFrames = 12)
+                clickNode(scene, "Siguiente canción", pumpFrames = 12)
+                assertEquals("C", playback.engine.state.value.track?.id)
+                assertEquals(listOf("A", "B", "C", "D"), playback.queue.value.map { it.id })
+            }
+
+            withSingleThreadScene(
+                width = 1366,
+                height = 768,
+                content = { OrbitTheme(ThemeSettings()) { MusicShell(model, playback) {} } },
+            ) { scene ->
+                playback.playFrom(tracks[0], tracks)
+                playback.seekTo(15L)
+                pump(scene, 10)
+
+                val handled = handleGlobalKeyboardShortcut(
+                    event = androidx.compose.ui.input.key.KeyEvent(
+                        key = androidx.compose.ui.input.key.Key.DirectionRight,
+                        type = androidx.compose.ui.input.key.KeyEventType.KeyDown,
+                        isCtrlPressed = true,
+                    ),
+                    playback = playback,
+                    isTheater = false,
+                    onCloseTheater = {},
+                    onOpenSearch = {},
+                )
+                assertTrue(handled, "Ctrl+Right shortcut should invoke seekBy(10)")
+                assertEquals("A", playback.engine.state.value.track?.id)
+                assertEquals(25L, playback.engine.state.value.position)
+
+                clickNode(scene, "Siguiente canción", pumpFrames = 12)
+                assertEquals("B", playback.engine.state.value.track?.id)
+
+                clickNode(scene, "Siguiente canción", pumpFrames = 6)
+                clickNode(scene, "Siguiente canción", pumpFrames = 12)
+                assertEquals("D", playback.engine.state.value.track?.id)
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
 }

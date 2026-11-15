@@ -16,6 +16,8 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
     private var pending: Triple<MusicItem, AudioStream, Long>? = null
     private var lastLoadedTrack: MusicItem? = null
     private var lastLoadedStream: AudioStream? = null
+    private var loadingTrackId: String? = null
+    private var readyTrackId: String? = null
     private var tick: Job? = null
     private var disconnected = false
     private var targetVolume: Float? = null
@@ -81,6 +83,17 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
 
     private fun refresh(player: Player) {
         val item = player.currentMediaItem
+        val pendingLoadId = loadingTrackId
+        if (pendingLoadId != null) {
+            if (item?.mediaId != pendingLoadId) return
+            if (player.playbackState != Player.STATE_READY && player.playerError == null) {
+                return
+            }
+            loadingTrackId = null
+        }
+        if (item != null && player.playbackState == Player.STATE_READY) {
+            readyTrackId = item.mediaId
+        }
         val knownDuration = player.duration.takeIf { it > 0L }?.div(1000L)
             ?: lastLoadedTrack?.takeIf { it.id == item?.mediaId }?.durationSeconds
             ?: state.value.takeIf { it.track?.id == item?.mediaId }?.duration?.takeIf { it > 0L }
@@ -104,17 +117,28 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
             position = player.currentPosition.coerceAtLeast(0L) / 1000L,
             duration = knownDuration,
             error = player.playerError?.let { "Audio no disponible. Reintentá para solicitar una transmisión nueva." },
-            ended = player.playbackState == Player.STATE_ENDED,
+            ended = player.playbackState == Player.STATE_ENDED && item != null && readyTrackId == item.mediaId,
         )
     }
 
     override fun load(track: MusicItem, stream: AudioStream) = loadAt(track, stream, 0)
     override fun loadAt(track: MusicItem, stream: AudioStream, seconds: Long) {
+        val targetSeconds = seconds.coerceAtLeast(0L)
+        loadingTrackId = track.id
+        readyTrackId = null
         lastLoadedTrack = track
         lastLoadedStream = stream
+        state.value = Transport(
+            track = track,
+            playing = true,
+            position = targetSeconds,
+            duration = track.durationSeconds ?: 0L,
+            error = null,
+            ended = false,
+        )
         val player = controller
         if (player == null) {
-            pending = Triple(track, stream, seconds)
+            pending = Triple(track, stream, targetSeconds)
             if (future == null && !disconnected) connect()
             return
         }
@@ -136,7 +160,7 @@ class AndroidEngine(private val context: Context, private val scope: CoroutineSc
                     .build()
             )
         if (effectiveMime != null) builder.setMimeType(effectiveMime)
-        player.setMediaItem(builder.build(), seconds.coerceAtLeast(0L) * 1000L)
+        player.setMediaItem(builder.build(), targetSeconds * 1000L)
         player.prepare()
         player.play()
     }

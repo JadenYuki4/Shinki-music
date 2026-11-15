@@ -253,7 +253,7 @@ class Playback(
         val list = queue.value.filterNot { it.id == item.id }.toMutableList()
         if (list.size >= 100) return
         manualQueueIds += item.id
-        val currentId = engine.state.value.track?.id ?: lastRequest?.id
+        val currentId = activeOrRequestedTrack()?.id
         val currentIdx = list.indexOfFirst { it.id == currentId }
         if (currentIdx >= 0 && currentIdx + 1 <= list.size) {
             list.add(currentIdx + 1, item)
@@ -268,7 +268,10 @@ class Playback(
         manualQueueIds.clear()
         autoQueueActive = false
         autoQueueSeed = null
+        lastAutoAdvanceFromId = null
+        lastAutoAdvanceToId = null
         val active = engine.state.value.track
+        if (active == null && pending.value == null) lastRequest = null
         queue.value = if (active != null) listOf(active) else emptyList()
     }
 
@@ -319,7 +322,12 @@ class Playback(
 
     fun next(automatic: Boolean = false) {
         val list = queue.value
-        val current = engine.state.value.track ?: lastRequest
+        val current = activeOrRequestedTrack()
+        if (!automatic && isCoincidentAutoAdvance(current)) {
+            lastAutoAdvanceFromId = null
+            lastAutoAdvanceToId = null
+            return
+        }
         val index = list.indexOfFirst { it.id == current?.id }
         val target = when {
             automatic && repeat.value == RepeatMode.One -> current
@@ -344,6 +352,10 @@ class Playback(
             if (previous.size > 100) previous.removeFirst()
         }
         select(target)
+        if (automatic && current != null && target.id != current.id) {
+            lastAutoAdvanceFromId = current.id
+            lastAutoAdvanceToId = target.id
+        }
         val targetIndex = list.indexOfFirst { it.id == target.id }
         val remainingAfterTarget = if (targetIndex >= 0) (list.lastIndex - targetIndex).coerceAtLeast(0) else 0
         if (autoQueueActive && autoplay.value && !history.incognito.value &&
@@ -424,10 +436,11 @@ class Playback(
 
     fun back() {
         val cur = currentTransport()
-        if (cur.position > 3) seekTo(0)
+        if (pending.value == null && cur.position > 3) seekTo(0)
         else {
-            val activeId = cur.track?.id
-            val target = previous.removeLastOrNull() ?: queue.value.getOrNull(queue.value.indexOfFirst { it.id == activeId } - 1)
+            val activeId = activeOrRequestedTrack()?.id ?: cur.track?.id
+            val idx = queue.value.indexOfFirst { it.id == activeId }
+            val target = previous.removeLastOrNull() ?: if (idx > 0) queue.value.getOrNull(idx - 1) else null
             if (target != null) select(target) else seekTo(0)
         }
     }
@@ -455,6 +468,21 @@ class Playback(
     private val downloadJobs = mutableMapOf<String, Job>()
     private var resolve: Job? = null
     private var lastRequest: MusicItem? = null
+    private var selectRequestId = 0L
+    private var lastAutoAdvanceFromId: String? = null
+    private var lastAutoAdvanceToId: String? = null
+
+    private fun activeOrRequestedTrack(): MusicItem? =
+        pending.value ?: lastRequest ?: engine.state.value.track ?: restored.value?.track
+
+    private fun isCoincidentAutoAdvance(activeTrack: MusicItem?): Boolean {
+        val toId = lastAutoAdvanceToId ?: return false
+        if (activeTrack?.id != toId) return false
+        if (pending.value?.id == toId) return true
+        val engineState = engine.state.value
+        if (engineState.track?.id == lastAutoAdvanceFromId && failure.value == null) return true
+        return engineState.track?.id == toId && engineState.position <= 1L && !engineState.ended
+    }
 
     private fun finalizeTrackedPlay(skipped: Boolean) {
         val previous = trackedPlayTrack ?: return
@@ -485,6 +513,10 @@ class Playback(
         scope.launch {
             engine.state.collect { transport ->
                 val active = transport.track
+                if (active != null && active.id == lastAutoAdvanceToId && transport.position > 1L) {
+                    lastAutoAdvanceFromId = null
+                    lastAutoAdvanceToId = null
+                }
                 val currentTracked = trackedPlayTrack
                 if (active != null && transport.error == null && active.id != currentTracked?.id && transport.playing) {
                     finalizeTrackedPlay(skipped = !trackedPlayEnded)
@@ -512,12 +544,15 @@ class Playback(
         }
         radio?.cancel()
         resolve?.cancel()
+        lastAutoAdvanceFromId = null
+        lastAutoAdvanceToId = null
         if (autoQueueActive && track.id != autoQueueSeed?.id) {
             autoQueueSeed = track
         }
         enqueue(track)
         visited.add(track.id)
         if (track.id != restored.value?.track?.id) restored.value = null
+        val requestId = ++selectRequestId
         lastRequest = track
         pending.value = track
         pendingSeekSeconds = if (resumePositionSeconds > 0L) resumePositionSeconds else null
@@ -563,9 +598,11 @@ class Playback(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                failure.value = "No se pudo abrir la salida de audio. Verificá el dispositivo de reproducción y reintentá."
+                if (selectRequestId == requestId) {
+                    failure.value = "No se pudo abrir la salida de audio. Verificá el dispositivo de reproducción y reintentá."
+                }
             } finally {
-                if (isActive) pending.value = null
+                if (selectRequestId == requestId && pending.value?.id == track.id) pending.value = null
             }
         }
     }

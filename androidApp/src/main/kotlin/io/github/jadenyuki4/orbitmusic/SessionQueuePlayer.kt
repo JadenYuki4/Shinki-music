@@ -2,7 +2,6 @@
 package io.github.jadenyuki4.orbitmusic
 
 import android.net.Uri
-import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.MediaItem
@@ -33,10 +32,9 @@ internal class SessionQueuePlayer(
         val existing: MediaMetadata?,
     )
 
-    private var lastNextSkipMs = 0L
-    private var lastPreviousSkipMs = 0L
     private var lastActiveMetaKey: ActiveMetaKey? = null
     private var lastActiveMeta: MediaMetadata? = null
+    private var readyMediaId: String? = null
 
     private val artCache = object : LinkedHashMap<String, ByteArray>(4, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?): Boolean = size > 4
@@ -48,27 +46,33 @@ internal class SessionQueuePlayer(
     override fun getState(): State {
         val base = super.getState()
         val current = player.currentMediaItem
-        val activeFallback = playback.engine.state.value.track
-            ?: playback.pending.value
+        val activeFallback = playback.pending.value
+            ?: playback.engine.state.value.track
             ?: playback.queue.value.firstOrNull()
-        val currentId = current?.mediaId ?: activeFallback?.id
+        val currentId = (playback.pending.value ?: playback.engine.state.value.track)?.id
+            ?: current?.mediaId
+            ?: activeFallback?.id
         if (currentId == null) {
             return base.buildUpon().setAvailableCommands(withSessionCommands(base.availableCommands)).build()
+        }
+        val exoCurrent = current?.takeIf { it.mediaId == currentId }
+        if (exoCurrent != null && player.playbackState == Player.STATE_READY) {
+            readyMediaId = currentId
         }
 
         val queue = playback.queue.value
         val playlist = queue.map { track ->
             val active = track.id == currentId
-            val baseItem = if (active && current != null) current else null
+            val baseItem = if (active) exoCurrent else null
             val metadata = track.toMetadata(baseItem?.mediaMetadata, includeArtworkBytes = active)
             val item = (baseItem?.buildUpon() ?: MediaItem.Builder().setMediaId(track.id))
                 .setMediaMetadata(metadata)
                 .build()
-            val duration = if (active && player.duration > 0) player.duration else track.durationSeconds?.times(1000)
+            val duration = if (active && exoCurrent != null && player.duration > 0) player.duration else track.durationSeconds?.times(1000)
             MediaItemData.Builder(track.id)
                 .setMediaItem(item)
                 .setMediaMetadata(metadata)
-                .setIsSeekable(active && current != null && player.isCurrentMediaItemSeekable)
+                .setIsSeekable(active && exoCurrent != null && player.isCurrentMediaItemSeekable)
                 .setDurationUs(duration?.times(1000) ?: C.TIME_UNSET)
                 .build()
         }.toMutableList()
@@ -76,12 +80,12 @@ internal class SessionQueuePlayer(
         var index = queue.indexOfFirst { it.id == currentId }
         if (index < 0) {
             // Keep the active or pending track visible while its replacement stream is resolving.
-            val syntheticItem = if (current != null) {
-                val trackMeta = activeFallback?.takeIf { it.id == current.mediaId }
-                    ?.toMetadata(current.mediaMetadata, includeArtworkBytes = true)
-                    ?: current.mediaMetadata
-                val item = current.buildUpon().setMediaMetadata(trackMeta).build()
-                MediaItemData.Builder(current.mediaId)
+            val syntheticItem = if (exoCurrent != null) {
+                val trackMeta = activeFallback?.takeIf { it.id == exoCurrent.mediaId }
+                    ?.toMetadata(exoCurrent.mediaMetadata, includeArtworkBytes = true)
+                    ?: exoCurrent.mediaMetadata
+                val item = exoCurrent.buildUpon().setMediaMetadata(trackMeta).build()
+                MediaItemData.Builder(exoCurrent.mediaId)
                     .setMediaItem(item)
                     .setMediaMetadata(trackMeta)
                     .setIsSeekable(player.isCurrentMediaItemSeekable)
@@ -102,11 +106,19 @@ internal class SessionQueuePlayer(
             index = 0
         }
 
-        return base.buildUpon()
+        val transitioningToCurrent = exoCurrent == null || (base.playbackState == Player.STATE_ENDED && readyMediaId != currentId)
+        val stateBuilder = base.buildUpon()
             .setPlaylist(playlist)
             .setCurrentMediaItemIndex(index)
             .setAvailableCommands(withSessionCommands(base.availableCommands))
-            .build()
+        if (transitioningToCurrent) {
+            val targetPosMs = (playback.engine.state.value.takeIf { it.track?.id == currentId }?.position ?: 0L)
+                .coerceAtLeast(0L) * 1000L
+            stateBuilder
+                .setPlaybackState(Player.STATE_BUFFERING)
+                .setContentPositionMs(targetPosMs)
+        }
+        return stateBuilder.build()
     }
 
     private fun withSessionCommands(commands: Player.Commands): Player.Commands = commands.buildUpon().addAll(
@@ -146,15 +158,12 @@ internal class SessionQueuePlayer(
 
     override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         when (seekCommand) {
-            Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
-                if (allowNextSkip()) playback.next()
-            }
-            Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
-                if (allowPreviousSkip()) playback.back()
-            }
+            Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> playback.next()
+            Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> playback.back()
             Player.COMMAND_SEEK_TO_MEDIA_ITEM -> {
                 val id = getMediaItemAt(mediaItemIndex).mediaId
-                if (id == player.currentMediaItem?.mediaId) player.seekTo(positionMs.coerceAtLeast(0))
+                val activeId = playback.pending.value?.id ?: playback.engine.state.value.track?.id ?: player.currentMediaItem?.mediaId
+                if (id == activeId && id == player.currentMediaItem?.mediaId) player.seekTo(positionMs.coerceAtLeast(0))
                 else playback.queue.value.firstOrNull { it.id == id }?.let { playback.select(it, positionMs.coerceAtLeast(0) / 1000) }
             }
             else -> return super.handleSeek(player.currentMediaItemIndex, positionMs, seekCommand)
@@ -212,20 +221,6 @@ internal class SessionQueuePlayer(
         val future = super.handleSetDeviceMuted(muted, flags)
         invalidateState()
         return future
-    }
-
-    private fun allowNextSkip(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastNextSkipMs < 250L) return false
-        lastNextSkipMs = now
-        return true
-    }
-
-    private fun allowPreviousSkip(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastPreviousSkipMs < 250L) return false
-        lastPreviousSkipMs = now
-        return true
     }
 
     private fun cachedArtBytes(url: String?): ByteArray? {
