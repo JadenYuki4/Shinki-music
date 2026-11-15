@@ -6,6 +6,12 @@
 
 **Aurora 5.3.7** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
+## Cambios de Aurora 5.3.7
+
+Se corrigió el avance de canciones durante la carga de audio en Android y Windows y el salto adicional al coincidir «Siguiente» con el final natural de una pista. Se agregaron pruebas de cola fija, pulsaciones consecutivas y avance de diez segundos.
+
+Los detalles y los límites de verificación están en las [notas de la versión 5.3.7](https://github.com/JadenYuki4/Shinki-music/releases/tag/v5.3.7).
+
 ## Escuchar a tu manera
 
 - **Seguir escuchando.** Al volver a abrir Shinki, la última canción aparece en pausa en el punto guardado. Tocá Reproducir para continuar. La cola admite reproducción aleatoria, repetición y temporizador de sueño.
@@ -82,6 +88,7 @@ bash gradlew :desktopApp:packageDeb
 | Aurora · icono de Shinki music | 5.3.4, compilación 172 |
 | Aurora · buscador y controles multimedia | 5.3.5, compilación 173 |
 | Aurora · búsqueda y reproductor actualizado | 5.3.6, compilación 174 |
+| Aurora · corrección de siguiente canción | 5.3.7, compilación 175 |
 
 ## Licencia y uso
 
