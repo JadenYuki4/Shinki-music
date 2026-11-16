@@ -4,13 +4,13 @@
 
 **Un reproductor de música personal, de código abierto y sin anuncios, creado por JadenYuki4.** Buscá música en YouTube Music, YouTube, SoundCloud o Bandcamp, armá tu cola y retomá la escucha donde la dejaste. Shinki comparte la interfaz entre Android, Windows y Linux, y usa un motor de audio nativo en cada plataforma.
 
-**Aurora 5.3.7** · [Descargar para Android](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.apk) · [Descargar para Windows x64](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.7/Shinki-music-5.3.7.msi) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
+**Aurora 5.3.8** · [Android (APK)](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.8/Shinki-music-5.3.8.apk) · [Windows x64 (MSI)](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.8/Shinki-music-5.3.8.msi) · [Debian x86-64 (DEB)](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.8/shinki-music_5.3.8_amd64.deb) · [Fedora x86-64 (RPM)](https://github.com/JadenYuki4/Shinki-music/releases/download/v5.3.8/shinki-music-5.3.8.x86_64.rpm) · [Ver todas las versiones](https://github.com/JadenYuki4/Shinki-music/releases)
 
-## Cambios de Aurora 5.3.7
+## Cambios de Aurora 5.3.8
 
-Se corrigió el avance de canciones durante la carga de audio en Android y Windows y el salto adicional al coincidir «Siguiente» con el final natural de una pista. Se agregaron pruebas de cola fija, pulsaciones consecutivas y avance de diez segundos.
+En Android, la canción sigue avanzando cuando una app pide foco de audio temporal para grabar una nota de voz. Si otra app toma el foco de forma permanente, Shinki pausa la música. Debian y Fedora ya tienen instaladores para equipos x86-64.
 
-Los detalles y los límites de verificación están en las [notas de la versión 5.3.7](https://github.com/JadenYuki4/Shinki-music/releases/tag/v5.3.7).
+Consultá las [pruebas y notas de la versión 5.3.8](https://github.com/JadenYuki4/Shinki-music/releases/tag/v5.3.8).
 
 ## Escuchar a tu manera
 
@@ -41,7 +41,7 @@ La distribución del escritorio toma como referencia a [Limusic](https://github.
 
 ## Compilar desde el código
 
-Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. La publicación de Aurora 5.3.7 ofrece APK y MSI. Para Linux podés compilar desde el código.
+Usá un **JDK 21 completo** como `JAVA_HOME` y el **SDK de Android 37**. Android admite dispositivos desde API 26. El instalador de Windows incluye su propio entorno Java. Los instaladores de Debian y Fedora usan el entorno Java del sistema.
 
 **Android** · En Windows, con un teléfono o emulador conectado:
 
@@ -106,6 +106,7 @@ bash gradlew :desktopApp:run
 | Aurora · buscador y controles multimedia | 5.3.5, compilación 173 |
 | Aurora · búsqueda y reproductor actualizado | 5.3.6, compilación 174 |
 | Aurora · corrección de siguiente canción | 5.3.7, compilación 175 |
+| Aurora · notas de voz en Android e instaladores Linux | 5.3.8, compilación 176 |
 
 ## Licencia y uso
 
